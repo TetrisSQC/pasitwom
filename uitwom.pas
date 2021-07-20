@@ -5,23 +5,23 @@
 * ITM, based on an original, public domain version of this file obtained from:  *
 * ftp://flattop.its.bldrdoc.gov/itm/ITMDLL.cpp prior to May, 2007. C++ routines *
 * for this program are taken from a translation of the FORTRAN code written by  *
-* U.S. Department of Commerce NTIA/ITS Institute for Telecommunication Sciences  *
+* U.S. Department of Commerce NTIA/ITS Institute for Telecommunication Sciences *
 * Irregular Terrain Model (ITM) (Longley-Rice).                                 *
 * 2. The Linux version of this file incorporates improvements suggested by a    *
 * study of changes made to file itm.cpp by J. D. McDonald to remove Microsoft   *
 * Windows dll-isms and to debug an ambguity in overloaded calls.                *
 * 3. The Linux version of this file also incorporates improvements suggested by *
 * a study of further modifications made to itm.cpp by John A. Magliacane to     *
-* remove unused variables, unneeded #includes, and to replace pow() statements   *
+* remove unused variables, unneeded #includes, and to replace pow() statements  *
 * with explicit multiplications to improve execution speed and accuracy.        *
 * 4. On August 19, 2007 this file was modified by Sid Shumate to include        *
 * changes and updates included in version 7.0 of ITMDLL.cpp, which was released *
-* by the NTIA/ITS on June 26, 2007. With correction set SS1 and SS2: itm71.cpp.  *
-* 5. On Feb. 5, 2008 this file became v.1.0 of the ITWOM with the addition, by   *
+* by the NTIA/ITS on June 26, 2007. With correction set SS1 and SS2: itm71.cpp. *
+* 5. On Feb. 5, 2008 this file became v.1.0 of the ITWOM with the addition, by  *
 * Sid Shumate, of multiple corrections, the replacement of subroutines lrprop   *
 * and alos with lrprop2 and alos2, and the addition of subroutine saalos to     *
 * incorporate Radiative Transfer Engine (RTE) computations in the line of sight *
-* range.                  *
+* range.                                                                        *
 * Update 8 Jun 2010 to modify alos to match 2010 series of IEEE-BTS             *
 * newsletter articles                                                           *
 * Update June 12, 2010 to z version to change test outputs                      *
@@ -34,6 +34,8 @@
 *                                                                               *
 * Commented out unused variables and calculations to eliminate gcc warnings     *
 *    (-Wunused-but-set-variable)  -- John A. Magliacane -- July 25, 2013        *
+*                                                                               *
+* The additional models are made for Signal Server by Alex Farrant              *
 ********************************************************************************)
 
 unit uitwom;
@@ -41,9 +43,6 @@ unit uitwom;
 {$mode objfpc}{$H+}
 
 interface
-
-uses
-  Classes, SysUtils;
 
 procedure point_to_point(const elev: array of double;
   const tht_m, rht_m, eps_dielect, sgm_conductivity, eno_ns_surfref, frq_mhz: double;
@@ -73,6 +72,22 @@ procedure area(const ModVar: longint; const deltaH, tht_m, rht_m, dist_km: doubl
   clutter_height, clutter_density, delta_h_diff, frq_mhz: double;
   const radio_climate, pol: integer; const pctTime, pctLoc, pctConf: double;
   out dbloss: double; out errnum: integer);
+
+
+// other models
+type
+ TEnvironment = (evUrban, evSuburban, evRural);
+
+// http://www.cl.cam.ac.uk/research/dtg/lce-pub/public/vsa23/VTC05_Empirical.pdf
+function COST231pathLoss(f, TxH, RxH, d: double; const mode: TEnvironment): double;
+function ECC33pathLoss(f, TxH, RxH, d: double; const mode: TEnvironment): double;
+function EgliPathLoss(f, h1, h2, d: double): double;
+function EricssonpathLoss(f, TxH, RxH, d: double; const Mode: TEnvironment): double;
+function FSPLpathLoss(f, d: double): double;
+function HATApathLoss(f, h_B, h_M, d: double; mode: TEnvironment): double;
+function PlaneEarthLoss(d, TxH, RxH: double): double;
+function SoilPathLoss(f, d, terdic: double): double;
+function SUIpathLoss(f, TxH, RxH, d: double; mode: TEnvironment): double;
 
 implementation
 
@@ -208,7 +223,7 @@ var
 begin
   if (x < 200.0) then
   begin
-    w := -log2(pk);
+    w := -ln(pk);
 
     if (pk < 1.0e-5) or (x * w * w * w > 5495.0) then
     begin
@@ -262,10 +277,10 @@ begin
   temp := 1.0 / r;
   x := temp * temp;
 
-  h0fv := 4.343 * log2((a[it - 1] * x + b[it - 1]) * x + 1.0);
+  h0fv := 4.343 * ln((a[it - 1] * x + b[it - 1]) * x + 1.0);
 
   if (q <> 0.0) then
-    h0fv := (1.0 - q) * h0fv + q * 4.343 * log2((a[it] * x + b[it]) * x + 1.0);
+    h0fv := (1.0 - q) * h0fv + q * 4.343 * ln((a[it] * x + b[it]) * x + 1.0);
 
   Result := h0fv;
 end;
@@ -287,7 +302,7 @@ begin
   else
     i := 2;
 
-  Result := a[i] + b[i] * td + c[i] * log2(td);
+  Result := a[i] + b[i] * td + c[i] * ln(td);
 end;
 
 function abq_alos(r: Complex): double;
@@ -481,7 +496,7 @@ begin
     xd1 := propa.dla + propa.tha / prop.gme;
     q := (1.0 - 0.8 * exp(-propa.dlsa / 50e3)) * prop.dh;
     q := q * (0.78 * exp(-power(q / 16.0, 0.25)));
-    afo := mymin(15.0, 2.171 * log2(1.0 + 4.77e-4 * prop.hg[0] *
+    afo := mymin(15.0, 2.171 * ln(1.0 + 4.77e-4 * prop.hg[0] *
       prop.hg[1] * prop.wn * q));
     qk := 1.0 / absc(prop_zgnd);
     aht := 20.0;
@@ -512,7 +527,7 @@ begin
     wa := power(a * prop.wn, THIRD);
     pk := qk / wa;
     q := (1.607 - pk) * 151.0 * wa * th + xht;
-    ar := 0.05751 * q - 4.343 * log2(q) - aht;
+    ar := 0.05751 * q - 4.343 * ln(q) - aht;
     q := (wd1 + xd1 / d) * mymin(
       ((1.0 - 0.8 * exp(-d / 50e3)) * prop.dh * prop.wn), 6283.2);
     wd := 25.1 / (25.1 + sqrt(q));
@@ -868,7 +883,7 @@ begin
 
       ett := mymax(et, 1.0);
       h0 := (h0f(r1, ett) + h0f(r2, ett)) * 0.5;
-      h0 := h0 + mymin(h0, (1.38 - log2(ett)) * log2(ss) * log2(q) * 0.49);
+      h0 := h0 + mymin(h0, (1.38 - ln(ett)) * ln(ss) * ln(q) * 0.49);
       h0 := FORTRAN_DIM(h0, 0.0);
 
       if (et < 1.0) then
@@ -876,7 +891,7 @@ begin
         (* h0=et*h0+(1.0-et)*4.343*log(pow((1.0+1.4142/r1)*(1.0+1.4142/r2),2.0)*(r1+r2)/(r1+r2+2.8284)); *)
 
         temp := ((1.0 + 1.4142 / r1) * (1.0 + 1.4142 / r2));
-        h0 := et * h0 + (1.0 - et) * 4.343 * log2(
+        h0 := et * h0 + (1.0 - et) * 4.343 * ln(
           (temp * temp) * (r1 + r2) / (r1 + r2 + 2.8284));
       end;
 
@@ -887,7 +902,7 @@ begin
     h0s := h0;
     th := propa.tha + d * prop.gme;
     (* ascatv=ahd(th*d)+4.343*log(47.7*prop.wn*pow(th,4.0))-0.1*(prop.ens-301.0)*exp(-th*d/40e3)+h0; *)
-    ascatv := ahd(th * d) + 4.343 * log2(47.7 * prop.wn * (th * th * th * th)) -
+    ascatv := ahd(th * d) + 4.343 * ln(47.7 * prop.wn * (th * th * th * th)) -
       0.1 * (prop.ens - 301.0) * exp(-th * d / 40e3) + h0;
   end;
 
@@ -907,7 +922,7 @@ var
 begin
   x := 0.5 - q;
   t := mymax(0.5 - abs(x), 0.000001);
-  t := sqrt(-2.0 * log2(t));
+  t := sqrt(-2.0 * ln(t));
   v := t - ((c2 * t + c1) * t + c0) / (((d3 * t + d2) * t + d1) * t + 1.0);
 
   if (x < 0.0) then
@@ -972,7 +987,7 @@ begin
     if (q > 1.57) then
       q := 3.14 - 2.4649 / q;
 
-    alosv := (-4.343 * log2(abq_alos(complexi(cos(q), -sin(q)) + r)) - alosv) *
+    alosv := (-4.343 * ln(abq_alos(complexi(cos(q), -sin(q)) + r)) - alosv) *
       wls + alosv;
   end;
   Result := alosv;
@@ -1227,9 +1242,9 @@ begin
       if (d0 < d1) then
       begin
         a0 := alos(d0, prop, propa);
-        q := log2(d2 / d0);
+        q := ln(d2 / d0);
         propa.ak2 := mymax(0.0, ((d2 - d0) * (a1 - a0) - (d1 - d0) * (a2 - a0)) /
-          ((d2 - d0) * log2(d1 / d0) - (d1 - d0) * q));
+          ((d2 - d0) * ln(d1 / d0) - (d1 - d0) * q));
         wq := (propa.aed >= 0.0) or (propa.ak2 > 0.0);
 
         if (wq) then
@@ -1263,12 +1278,12 @@ begin
           propa.ak1 := propa.emd;
       end;
 
-      propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * log2(d2);
+      propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * ln(d2);
       wlos := True;
     end;
 
     if (prop.dist > 0.0) then
-      prop.aref := propa.ael + propa.ak1 * prop.dist + propa.ak2 * log2(prop.dist);
+      prop.aref := propa.ael + propa.ak1 * prop.dist + propa.ak2 * ln(prop.dist);
   end;
 
   if (prop.dist <= 0.0) or (prop.dist >= propa.dlsa) then
@@ -1285,7 +1300,7 @@ begin
       begin
         propa.ems := (a6 - a5) / 200e3;
         propa.dx := mymax(propa.dlsa, mymax(propa.dla + 0.3 * xae *
-          log2(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
+          ln(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
           (propa.emd - propa.ems)));
         propa.aes := (propa.emd - propa.ems) * propa.dx + propa.aed;
       end
@@ -1432,10 +1447,10 @@ begin
           begin
             a0 := alos2(d0, prop);
             a2 := mymin(a2, alos2(d2, prop));
-            q := log2(d2 / d0);
+            q := ln(d2 / d0);
             propa.ak2 :=
               mymax(0.0, ((d2 - d0) * (a1 - a0) - (d1 - d0) * (a2 - a0)) /
-              ((d2 - d0) * log2(d1 / d0) - (d1 - d0) * q));
+              ((d2 - d0) * ln(d1 / d0) - (d1 - d0) * q));
             wq := (propa.aed >= 0.0) or (propa.ak2 > 0.0);
 
             if (wq) then
@@ -1462,7 +1477,7 @@ begin
               propa.ak1 := propa.emd;
           end;
 
-          propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * log2(d2);
+          propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * ln(d2);
           wlos := True;
         end;
       end;
@@ -1517,7 +1532,7 @@ begin
         begin
           propa.ems := (a6 - a5) / 200e3;
           propa.dx := mymax(propa.dlsa, mymax(propa.dla + 0.3 * xae *
-            log2(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
+            ln(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
             (propa.emd - propa.ems)));
 
           propa.aes := (propa.emd - propa.ems) * propa.dx + propa.aed;
@@ -1652,7 +1667,7 @@ var
 
   procedure doLvar3();
   begin
-    q := log2(0.133 * prop.wn);
+    q := ln(0.133 * prop.wn);
 
     (* gm=cfm1+cfm2/(pow(cfm3*q,2.0)+1.0); *)
     (* gp=cfp1+cfp2/(pow(cfp3*q,2.0)+1.0); *)
@@ -2662,6 +2677,7 @@ var
 
 begin
   propa.aed := 0;
+  prop.aref := 0;
   zsys := 0;
   fillchar(prop, sizeof(prop),0);
   prop.hg[0] := tht_m;
@@ -3016,6 +3032,288 @@ begin
   xlb := fs + avar(zt, zl, zc, prop, propv);
   dbloss := xlb;
   errnum := prop.kwx;
+end;
+
+// other models
+
+function _10log10f(const x: double): double; inline;
+begin
+  Result := 4.342944 * ln(x);
+end;
+
+function _20log10f(x: double): double; inline;
+begin
+  Result := 8.685889 * ln(x);
+end;
+
+function COST231pathLoss(f, TxH, RxH, d: double; const mode: TEnvironment): double;
+(*
+COST231 extension to HATA model
+Frequency 1500 to 2000MHz
+TxH = Base station height 30 to 200m
+RxH = Mobile station height 1 to 10m
+Distance 1-20km
+modes 1 = URBAN, 2 = SUBURBAN, 3 = OPEN
+http://morse.colorado.edu/~tlen5510/text/classwebch3.html
+*)
+var
+  C: integer;
+  lRxH, C_H: double;
+  c0, cf: double;
+  logf: double;
+begin
+  C := 3;    // 3dB for Urban
+  lRxH := log10(11.75 * RxH);
+  C_H := 3.2 * (lRxH * lRxH) - 4.97;  // Large city (conservative)
+  c0 := 69.55;
+  cf := 26.16;
+  if (f > 1500) then
+  begin
+    c0 := 46.3;
+    cf := 33.9;
+  end;
+  if (mode = TEnvironment.evSuburban) then
+  begin
+    C := 0;    // Medium city (average)
+    lRxH := log10(1.54 * RxH);
+    C_H := 8.29 * (lRxH * lRxH) - 1.1;
+  end
+  else
+  if (mode = TEnvironment.evUrban) then
+  begin
+    C := -3;    // Small city (Optimistic)
+    C_H := (1.1 * log10(f) - 0.7) * RxH - (1.56 * log10(f)) + 0.8;
+  end;
+  logf := log10(f);
+  Result :=
+    c0 + (cf * logf) - (13.82 * log10(TxH)) - C_H + (44.9 - 6.55 * log10(TxH)) *
+    log10(d) + C;
+end;
+
+function ECC33pathLoss(f, TxH, RxH, d: double; const mode: TEnvironment): double;
+var
+  Gr, Gb: double;
+  Afs, Abm: double;
+begin
+
+  // Sanity check as this model operates within limited Txh/Rxh bounds
+  if (TxH - RxH < 0) then
+    RxH := RxH / (d * 2);
+
+  // MHz to GHz
+  f := f / 1000;
+
+  Gr := 0.759 * RxH - 1.862;  // Big city with tall buildings (1)
+  // PL := Afs + Abm - Gb - Gr
+  Afs := 92.4 + 20 * log10(d) + 20 * log10(f);
+  Abm :=
+    20.41 + 9.83 * log10(d) + 7.894 * log10(f) + 9.56 * (log10(f) * log10(f));
+  Gb := log10(TxH / 200) * (13.958 + 5.8 * (log10(d) * log10(d)));
+  if (mode in [TEnvironment.evSuburban, TEnvironment.evRural]) then    // Medium city (Europe)
+    Gr := (42.57 + 13.7 * log10(f)) * (log10(RxH) - 0.585);
+
+  Result := Afs + Abm - Gb - Gr;
+end;
+
+
+function EgliPathLoss(f, h1, h2, d: double): double;
+var
+  Lp50: double;
+  C1, C2: double;
+begin
+  if (h1 > 10.0) and (h2 > 10.0) then
+  begin
+    Lp50 := 85.9;
+    C1 := 2.0;
+    C2 := 2.0;
+  end
+  else if (h1 > 10.0) then
+  begin
+    Lp50 := 76.3;
+    C1 := 2.0;
+    C2 := 1.0;
+  end
+  else if (h2 > 10.0) then
+  begin
+    Lp50 := 76.3;
+    C1 := 1.0;
+    C2 := 2.0;
+  end
+  else  // both antenna heights below 10 metres
+  begin
+    Lp50 := 66.7;
+    C1 := 1.0;
+    C2 := 1.0;
+  end;  // end if
+
+  Result := Lp50 + (4.0 * _10log10f(d) + 2.0 * _10log10f(f) - C1 *
+    _10log10f(h1) - C2 * _10log10f(h2));
+end;
+
+function EricssonpathLoss(f, TxH, RxH, d: double; const Mode: TEnvironment): double;
+var
+  a0, a1, a2, a3: double;
+  g1, g2: double;
+begin
+  (*
+     AKA Ericsson 9999 model
+   *)
+  // Urban
+  a0 := 36.2;
+  a1 := 30.2;
+  a2 := -12;
+  a3 := 0.1;
+  if (mode = TEnvironment.evSuburban) then
+  begin
+    // Suburban / Med loss
+    a0 := 43.2;
+    a1 := 68.93;
+  end
+  else
+  if (mode = TEnvironment.evRural) then
+  begin
+    // Rural
+    a0 := 45.95;
+    a1 := 100.6;
+  end;
+  g1 := 3.2 * (log10(11.75 * RxH) * log10(11.75 * RxH));
+  g2 := 44.49 * log10(f) - 4.78 * (log10(f) * log10(f));
+
+  Result := a0 + a1 * log10(d) + a2 * log10(TxH) + a3 * log10(TxH) * log10(d) - g1 + g2;
+end;
+
+function FSPLpathLoss(f, d: double): double;
+begin
+  Result := (32.44 + _20log10f(f) + _20log10f(d));
+end;
+
+function HATApathLoss(f, h_B, h_M, d: double; mode: TEnvironment): double;
+var
+  L_u, lh_M, C_H: double;
+  logf: double;
+  logf_28: double;
+begin
+(*
+HATA URBAN model for cellular planning
+Frequency (MHz) 150 to 1500MHz
+Base station height 30-200m
+Mobile station height 1-10m
+Distance 1-20km
+mode 1 = URBAN
+mode 2 = SUBURBAN
+mode 3 = OPEN
+*)
+  logf := log10(f);
+
+  if (f < 200) then
+  begin
+    lh_M := log10(1.54 * h_M);
+    C_H := 8.29 * (lh_M * lh_M) - 1.1;
+  end
+  else
+  begin
+    lh_M := log10(11.75 * h_M);
+    C_H := 3.2 * (lh_M * lh_M) - 4.97;
+  end;
+
+  L_u := 69.55 + 26.16 * logf - 13.82 * log10(h_B) - C_H +
+    (44.9 - 6.55 * log10(h_B)) * log10(d);
+
+  case mode of
+    TEnvironment.evUrban:
+    begin // Urban
+      Result := L_u;
+    end;
+    TEnvironment.evSuburban:
+    begin  // SubUrban
+      logf_28 := log10(f / 28);
+      Result := L_u - 2 * logf_28 * logf_28 - 5.4;
+      exit;
+    end;
+    TEnvironment.evRural:
+    begin // Open
+      Result := L_u - 4.78 * logf * logf + 18.33 * logf - 40.94;
+    end;
+    else
+      Result := 0;
+  end;
+end;
+
+function PlaneEarthLoss(d, TxH, RxH: double): double;
+begin
+(*
+Plane Earth Loss model
+Frequency: N/A
+Distance (km): Any
+*)
+	// Plane earth loss is independent of frequency.
+	result := 40*log10(d) + 20*log10(TxH) + 20*log10(RxH);
+end;
+
+function SoilPathLoss(f, d, terdic: double): double;
+var soil: double;
+begin
+  soil := (120/terdic);
+  result := (6.4 + _20log10f(d) + _20log10f(f)+(8.69*soil));
+end;
+
+function SUIpathLoss(f, TxH, RxH, d: double; mode: TEnvironment): double;
+var a,b,c,s, XhCF: double;
+    d0,_A,y: double;
+    Xf, Xh: double;
+begin
+        (*
+           f = Frequency (MHz) 1900 to 11000
+           TxH =  Transmitter height (m)
+           RxH = Receiver height (m)
+           d = distance (km)
+           mode A1 = URBAN / OBSTRUCTED
+           mode B2 = SUBURBAN / PARTIALLY OBSTRUCTED
+           mode C3 = RURAL / OPEN
+           Paper 1 has a Rx height correction of / 2000
+           Paper 2 has the same correction as / 2 and gives better results
+           "Ranked number 2 University in the wurld"
+           http://www.cl.cam.ac.uk/research/dtg/lce-pub/public/vsa23/VTC05_Empirical.pdf
+           https://mentor.ieee.org/802.19/file/08/19-08-0010-00-0000-sui-path-loss-model.doc
+         *)
+        d := d * 1e3;               // km to m
+
+        // Urban (A1) is default
+        a := 4.6;
+        b := 0.0075;
+        c := 12.6;
+        s := 8.2; // Optional fading value. 8.2 to 10.6dB
+        XhCF := -10.8;
+
+        if (mode = TEnvironment.evSuburban) then  // Suburban
+        begin
+                a := 4.0;
+                b := 0.0065;
+                c := 17.1;
+		XhCF := -10.8;
+        end;
+        if (mode = TEnvironment.evRural) then  // Rural
+        begin
+                a := 3.6;
+                b := 0.005;
+                c := 20;
+                XhCF := -20;
+        end;
+        d0 := 100.0;
+        _A := _20log10f((4 * PI * d0) / (300.0 / f));
+        y := a - (b * TxH) + (c / TxH);
+
+	// Assume 2.4GHz
+        Xf := 0;
+        Xh := 0;
+
+        //Correction factors for > 2GHz
+	if(f>2000) then
+        begin
+		Xf:=6.0 * log10(f / 2.0);
+		Xh:=XhCF * log10(RxH / 2.0);
+        end;
+        result := _A + (10 * y) * (log10(d / d0)) + Xf + Xh + s;
 end;
 
 end.

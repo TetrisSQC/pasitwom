@@ -36,6 +36,7 @@
 *    (-Wunused-but-set-variable)  -- John A. Magliacane -- July 25, 2013        *
 *                                                                               *
 * The additional models are made for Signal Server by Alex Farrant              *
+* Translation do Pascal made by Christian Hackbart                              *
 ********************************************************************************)
 
 unit uitwom;
@@ -76,7 +77,7 @@ procedure area(const ModVar: longint; const deltaH, tht_m, rht_m, dist_km: doubl
 
 // other models
 type
- TEnvironment = (evUrban, evSuburban, evRural);
+  TEnvironment = (evUrban, evSuburban, evRural);
 
 // http://www.cl.cam.ac.uk/research/dtg/lce-pub/public/vsa23/VTC05_Empirical.pdf
 function COST231pathLoss(f, TxH, RxH, d: double; const mode: TEnvironment): double;
@@ -99,7 +100,7 @@ const
 type
   TDoubleArray = array[0..1] of double;
 
-  prop_type = record
+  TPropType = record
     aref: double;
     dist: double;
     hg: TDoubleArray;
@@ -134,14 +135,7 @@ type
     los: integer;
   end;
 
-  propv_type = record
-    sgc: double;
-    lvar: integer;
-    mdvar: integer;
-    klim: integer;
-  end;
-
-  propa_type = record
+  TPropAType = record
     dlsa: double;
     dx: double;
     ael: double;
@@ -155,6 +149,40 @@ type
     dla: double;
     tha: double;
   end;
+
+  TPropVType = record
+    sgc: double;
+    lvar: integer;
+    mdvar: integer;
+    klim: integer;
+  end;
+
+
+  TProfileData = record
+    prop: TPropType;
+    propa: TPropAType;
+    propv: TPropVType;
+
+
+    // c allows to store global variables marked as static - this is not possible in delphi
+    wd1, xd1, afo, qk, aht, xht: double; //adiff
+    ad, rr, etq, h0s: double; //ascat
+
+    toh, toho, roh, roho, dto, dto1, dtro, dro,
+    dro2, drto, dtr, dhh1, dhh2, dtof, dto1f, drof, dro2f: double; //adiff2
+
+    wls: double; //alos
+
+    wlos, wscat: boolean; //lrprop
+    dmin, xae: double;    //lrprop
+
+    kdv: integer;    //avar
+    dexa, de, vmd, vs0, sgl, sgtm, sgtp, sgtd, tgtd, gm, gp, cv1, cv2,
+    yv1, yv2, yv3, csm1, csm2, ysm1, ysm2, ysm3, csp1, csp2, ysp1, ysp2,
+    ysp3, csd1, zd, cfm1, cfm2, cfm3, cfp1, cfp2, cfp3: double; //avar
+    ws, w1: boolean; // avar
+  end;
+
 
 function mymin(const i, j: integer): integer; inline; overload;
 begin
@@ -310,7 +338,7 @@ begin
   Result := r.re * r.re + r.im * r.im;
 end;
 
-function saalos(const d: double; prop: prop_type): double;
+function saalos(const d: double; const prop: TPropType): double;
 var
   ensa, encca, q, dp, dx, tde, hc, ucrpc, ctip, tip, tic, stic, ctic, sta: double;
   ttc, cttc, crpc, ssnps, d1a, rsp, tsp, arte, zi, pd, pdk, hone, tvsr: double;
@@ -474,438 +502,452 @@ begin
   Result := saalosv;
 end;
 
-function adiff(const d: double; const prop: prop_type; const propa: propa_type): double;
+function adiff(var AProfile: TProfileData; const d: double): double;
 var
   prop_zgnd: complex;
-  wd1, xd1, afo, qk, aht, xht: double;
   a, q, pk, ds, th, wa, ar, wd, adiffv: double;
   j: integer;
 begin
-  prop_zgnd.re := prop.zgndreal;
-  prop_zgnd.im := prop.zgndimag;
-
-  if (d = 0) then
+  with AProfile do
   begin
-    q := prop.hg[0] * prop.hg[1];
-    qk := prop.he[0] * prop.he[1] - q;
+    prop_zgnd.re := prop.zgndreal;
+    prop_zgnd.im := prop.zgndimag;
 
-    if (prop.mdp < 0.0) then
-      q := q + 10.0;
-
-    wd1 := sqrt(1.0 + qk / q);
-    xd1 := propa.dla + propa.tha / prop.gme;
-    q := (1.0 - 0.8 * exp(-propa.dlsa / 50e3)) * prop.dh;
-    q := q * (0.78 * exp(-power(q / 16.0, 0.25)));
-    afo := mymin(15.0, 2.171 * ln(1.0 + 4.77e-4 * prop.hg[0] *
-      prop.hg[1] * prop.wn * q));
-    qk := 1.0 / absc(prop_zgnd);
-    aht := 20.0;
-    xht := 0.0;
-
-    for j := 0 to 1 do
+    if (d = 0) then
     begin
-      (* a:=0.5*power(prop.dl[j],2.0)/prop.he[j]; *)
-      a := 0.5 * (prop.dl[j] * prop.dl[j]) / prop.he[j];
+      q := prop.hg[0] * prop.hg[1];
+      qk := prop.he[0] * prop.he[1] - q;
+
+      if (prop.mdp < 0.0) then
+        q := q + 10.0;
+
+      wd1 := sqrt(1.0 + qk / q);
+      xd1 := propa.dla + propa.tha / prop.gme;
+      q := (1.0 - 0.8 * exp(-propa.dlsa / 50e3)) * prop.dh;
+      q := q * (0.78 * exp(-power(q / 16.0, 0.25)));
+      afo := mymin(15.0, 2.171 * ln(1.0 + 4.77e-4 * prop.hg[0] *
+        prop.hg[1] * prop.wn * q));
+      qk := 1.0 / absc(prop_zgnd);
+      aht := 20.0;
+      xht := 0.0;
+
+      for j := 0 to 1 do
+      begin
+        (* a:=0.5*power(prop.dl[j],2.0)/prop.he[j]; *)
+        a := 0.5 * (prop.dl[j] * prop.dl[j]) / prop.he[j];
+        wa := power(a * prop.wn, THIRD);
+        pk := qk / wa;
+        q := (1.607 - pk) * 151.0 * wa * prop.dl[j] / a;
+        xht := xht + q;
+        aht := aht + fht(q, pk);
+      end;
+      adiffv := 0.0;
+    end
+    else
+    begin
+      th := propa.tha + d * prop.gme;
+      ds := d - propa.dla;
+      (* q=0.0795775*prop.wn*ds*power(th,2.0); *)
+      q := 0.0795775 * prop.wn * ds * th * th;
+      adiffv := aknfe(q * prop.dl[0] / (ds + prop.dl[0])) +
+        aknfe(q * prop.dl[1] / (ds + prop.dl[1]));
+      a := ds / th;
       wa := power(a * prop.wn, THIRD);
       pk := qk / wa;
-      q := (1.607 - pk) * 151.0 * wa * prop.dl[j] / a;
-      xht := xht + q;
-      aht := aht + fht(q, pk);
+      q := (1.607 - pk) * 151.0 * wa * th + xht;
+      ar := 0.05751 * q - 4.343 * ln(q) - aht;
+      q := (wd1 + xd1 / d) * mymin(
+        ((1.0 - 0.8 * exp(-d / 50e3)) * prop.dh * prop.wn), 6283.2);
+      wd := 25.1 / (25.1 + sqrt(q));
+      adiffv := ar * wd + (1.0 - wd) * adiffv + afo;
     end;
-
-    adiffv := 0.0;
-  end
-  else
-  begin
-    th := propa.tha + d * prop.gme;
-    ds := d - propa.dla;
-    (* q=0.0795775*prop.wn*ds*power(th,2.0); *)
-    q := 0.0795775 * prop.wn * ds * th * th;
-    adiffv := aknfe(q * prop.dl[0] / (ds + prop.dl[0])) +
-      aknfe(q * prop.dl[1] / (ds + prop.dl[1]));
-    a := ds / th;
-    wa := power(a * prop.wn, THIRD);
-    pk := qk / wa;
-    q := (1.607 - pk) * 151.0 * wa * th + xht;
-    ar := 0.05751 * q - 4.343 * ln(q) - aht;
-    q := (wd1 + xd1 / d) * mymin(
-      ((1.0 - 0.8 * exp(-d / 50e3)) * prop.dh * prop.wn), 6283.2);
-    wd := 25.1 / (25.1 + sqrt(q));
-    adiffv := ar * wd + (1.0 - wd) * adiffv + afo;
   end;
-
   Result := adiffv;
 end;
 
-function adiff2(const d: double; var prop: prop_type; const propa: propa_type): double;
+function adiff2(var AProfile: TProfileData; const d: double): double;
 var
   prop_zgnd: complex;
-  wd1, xd1, qk, aht, xht, toh, toho, roh, roho, dto, dto1, dtro, dro,
-  dro2, drto, dtr, dhh1, dhh2, (* dhec, *) dtof, dto1f, drof, dro2f: double;
   dish: double;
   a, q, pk, rd, ds, dsl, (* dfdh, *) th, wa, (* ar, wd, sf1, *) sf2,
   (* ec, *) vv, kedr, arp, sdr, pd, srp, kem, csd, sdl, adiffv2, closs: double;
 begin
-  prop_zgnd.re := prop.zgndreal;
-  prop_zgnd.im := prop.zgndimag;
-  kedr := 0.0;
-  arp := 0.0;
-  sdr := 0.0;
-  pd := 0.0;
-  srp := 0.0;
-  kem := 0.0;
-  csd := 0.0;
-  sdl := 0.0;
-  adiffv2 := 0.0;
-  closs := 0.0;
-
-  // sf1:=1.0; (* average empirical hilltop foliage scatter factor for 1 obstruction  *)
-  sf2 := 1.0;  (* average empirical hilltop foliage scatter factor for 2 obstructions *)
-
-  (* dfdh:=prop.dh; *)
-  (* ec:=0.5*prop.gme; *)
-
-  (* adiff2 must first be run with d==0.0 to set up coefficients *)
-  if (d = 0) then
+  with AProfile do
   begin
-    q := prop.hg[0] * prop.hg[1];
-    qk := prop.he[0] * prop.he[1] - q;
-    (* dhec=2.73; *)
+    prop_zgnd.re := prop.zgndreal;
+    prop_zgnd.im := prop.zgndimag;
+    kedr := 0.0;
+    arp := 0.0;
+    sdr := 0.0;
+    pd := 0.0;
+    srp := 0.0;
+    kem := 0.0;
+    csd := 0.0;
+    sdl := 0.0;
+    adiffv2 := 0.0;
+    closs := 0.0;
 
-    if (prop.mdp < 0.0) then
-      q := q + 10.0;
+    // sf1:=1.0; (* average empirical hilltop foliage scatter factor for 1 obstruction  *)
+    sf2 := 1.0;  (* average empirical hilltop foliage scatter factor for 2 obstructions *)
 
-    (* coefficients for a standard four radii, rounded earth computation are prepared *)
-    wd1 := sqrt(1.0 + qk / q);
-    xd1 := propa.dla + propa.tha / prop.gme;
-    q := (1.0 - 0.8 * exp(-propa.dlsa / 50e3)) * prop.dh;
-    q := q * (0.78 * exp(-power(q / 16.0, 0.25)));
-    qk := 1.0 / absc(prop_zgnd);
-    aht := 20.0;
-    xht := 0.0;
-    a := 0.5 * (prop.dl[0] * prop.dl[0]) / prop.he[0];
-    wa := power(a * prop.wn, THIRD);
-    pk := qk / wa;
-    q := (1.607 - pk) * 151.0 * wa * prop.dl[0] / a;
-    xht := q;
-    aht := aht + fht(q, pk);
+    (* dfdh:=prop.dh; *)
+    (* ec:=0.5*prop.gme; *)
 
-
-    if ((trunc(prop.dl[1]) = 0.0) or (prop.the[1] > 0.2)) then
+    (* adiff2 must first be run with d==0.0 to set up coefficients *)
+    if (d = 0) then
     begin
-      xht := xht + xht;
-      aht := aht + (aht - 20.0);
+      q := prop.hg[0] * prop.hg[1];
+      qk := prop.he[0] * prop.he[1] - q;
+      (* dhec=2.73; *)
+
+      if (prop.mdp < 0.0) then
+        q := q + 10.0;
+
+      (* coefficients for a standard four radii, rounded earth computation are prepared *)
+      wd1 := sqrt(1.0 + qk / q);
+      xd1 := propa.dla + propa.tha / prop.gme;
+      q := (1.0 - 0.8 * exp(-propa.dlsa / 50e3)) * prop.dh;
+      q := q * (0.78 * exp(-power(q / 16.0, 0.25)));
+      qk := 1.0 / absc(prop_zgnd);
+      aht := 20.0;
+      xht := 0.0;
+      a := 0.5 * (prop.dl[0] * prop.dl[0]) / prop.he[0];
+      wa := power(a * prop.wn, THIRD);
+      pk := qk / wa;
+      q := (1.607 - pk) * 151.0 * wa * prop.dl[0] / a;
+      xht := q;
+      aht := aht + fht(q, pk);
+
+
+      if ((trunc(prop.dl[1]) = 0.0) or (prop.the[1] > 0.2)) then
+      begin
+        xht := xht + xht;
+        aht := aht + (aht - 20.0);
+      end
+      else
+      begin
+        a := 0.5 * (prop.dl[1] * prop.dl[1]) / prop.he[1];
+        wa := power(a * prop.wn, THIRD);
+        pk := qk / wa;
+        q := (1.607 - pk) * 151.0 * wa * prop.dl[1] / a;
+        xht := xht + q;
+        aht := aht + fht(q, pk);
+      end;
+      adiffv2 := 0.0;
     end
     else
     begin
-      a := 0.5 * (prop.dl[1] * prop.dl[1]) / prop.he[1];
+      th := propa.tha + d * prop.gme;
+
+      dsl := mymax(d - propa.dla, 0.0);
+      ds := d - propa.dla;
+      a := ds / th;
       wa := power(a * prop.wn, THIRD);
-      pk := qk / wa;
-      q := (1.607 - pk) * 151.0 * wa * prop.dl[1] / a;
-      xht := xht + q;
-      aht := aht + fht(q, pk);
-    end;
-    adiffv2 := 0.0;
-  end
-  else
-  begin
-    th := propa.tha + d * prop.gme;
+      if wa = 0 then
+        pk := 0
+      else
+        pk := qk / wa;
+      toh := prop.hht - (prop.rch[0] - prop.dl[0] *
+        ((prop.rch[1] - prop.rch[0]) / prop.dist));
+      roh := prop.hhr - (prop.rch[0] - (prop.dist - prop.dl[1]) *
+        ((prop.rch[1] - prop.rch[0]) / prop.dist));
+      dish := (prop.dist - prop.dl[1]);
+      if dish <> 0 then
+        toho := prop.hht - (prop.rch[0] - (prop.dl[0] + dsl) *
+          ((prop.hhr - prop.rch[0]) / dish))
+      else
+        toho := 0;
+      if dsl = 0 then
+        dsl := 1;
+      roho := prop.hhr - (prop.hht - dsl * ((prop.rch[1] - prop.hht) / dsl));
+      dto := sqrt(prop.dl[0] * prop.dl[0] + toh * toh);
+      dto := dto + prop.gme * prop.dl[0];
+      dto1 := sqrt(prop.dl[0] * prop.dl[0] + toho * toho);
+      dto1 := dto1 + prop.gme * prop.dl[0];
+      dtro := sqrt((prop.dl[0] + dsl) * (prop.dl[0] + dsl) + prop.hhr * prop.hhr);
+      dtro := dtro + prop.gme * (prop.dl[0] + dsl);
+      drto := sqrt((prop.dl[1] + dsl) * (prop.dl[1] + dsl) + prop.hht * prop.hht);
+      drto := drto + prop.gme * (prop.dl[1] + dsl);
+      dro := sqrt(prop.dl[1] * prop.dl[1] + roh * roh);
+      dro := dro + prop.gme * (prop.dl[1]);
+      dro2 := sqrt(prop.dl[1] * prop.dl[1] + roho * roho);
+      dro2 := dro2 + prop.gme * (prop.dl[1]);
+      dtr := sqrt(prop.dist * prop.dist + (prop.rch[0] - prop.rch[1]) *
+        (prop.rch[0] - prop.rch[1]));
+      dtr := dtr + prop.gme * prop.dist;
+      dhh1 := sqrt((prop.dist - propa.dla) * (prop.dist - propa.dla) + toho * toho);
+      dhh1 := dhh1 + prop.gme * (prop.dist - propa.dla);
+      dhh2 := sqrt((prop.dist - propa.dla) * (prop.dist - propa.dla) + roho * roho);
+      dhh2 := dhh2 + prop.gme * (prop.dist - propa.dla);
 
-    dsl := mymax(d - propa.dla, 0.0);
-    ds := d - propa.dla;
-    a := ds / th;
-    wa := power(a * prop.wn, THIRD);
-    if wa=0 then pk := 0 else pk := qk / wa;
-    toh := prop.hht - (prop.rch[0] - prop.dl[0] * ((prop.rch[1] - prop.rch[0]) / prop.dist));
-    roh := prop.hhr - (prop.rch[0] - (prop.dist - prop.dl[1]) *
-      ((prop.rch[1] - prop.rch[0]) / prop.dist));
-    dish := (prop.dist - prop.dl[1]);
-    if dish <> 0 then
-     toho := prop.hht - (prop.rch[0] - (prop.dl[0] + dsl) *
-      ((prop.hhr - prop.rch[0]) / dish))
-    else
-      toho := 0;
-    if dsl=0 then dsl := 1;
-    roho := prop.hhr - (prop.hht - dsl * ((prop.rch[1] - prop.hht) / dsl));
-    dto := sqrt(prop.dl[0] * prop.dl[0] + toh * toh);
-    dto := dto + prop.gme * prop.dl[0];
-    dto1 := sqrt(prop.dl[0] * prop.dl[0] + toho * toho);
-    dto1 := dto1 + prop.gme * prop.dl[0];
-    dtro := sqrt((prop.dl[0] + dsl) * (prop.dl[0] + dsl) + prop.hhr * prop.hhr);
-    dtro := dtro + prop.gme * (prop.dl[0] + dsl);
-    drto := sqrt((prop.dl[1] + dsl) * (prop.dl[1] + dsl) + prop.hht * prop.hht);
-    drto := drto + prop.gme * (prop.dl[1] + dsl);
-    dro := sqrt(prop.dl[1] * prop.dl[1] + roh * roh);
-    dro := dro + prop.gme * (prop.dl[1]);
-    dro2 := sqrt(prop.dl[1] * prop.dl[1] + roho * roho);
-    dro2 := dro2 + prop.gme * (prop.dl[1]);
-    dtr := sqrt(prop.dist * prop.dist + (prop.rch[0] - prop.rch[1]) * (prop.rch[0] - prop.rch[1]));
-    dtr := dtr + prop.gme * prop.dist;
-    dhh1 := sqrt((prop.dist - propa.dla) * (prop.dist - propa.dla) + toho * toho);
-    dhh1 := dhh1 + prop.gme * (prop.dist - propa.dla);
-    dhh2 := sqrt((prop.dist - propa.dla) * (prop.dist - propa.dla) + roho * roho);
-    dhh2 := dhh2 + prop.gme * (prop.dist - propa.dla);
+      (* for 1 obst tree base path *)
+      dtof := sqrt(prop.dl[0] * prop.dl[0] + (toh - prop.cch) * (toh - prop.cch));
+      dtof := dtof + prop.gme * prop.dl[0];
+      dto1f := sqrt(prop.dl[0] * prop.dl[0] + (toho - prop.cch) * (toho - prop.cch));
+      dto1f := dto1f + prop.gme * prop.dl[0];
+      drof := sqrt(prop.dl[1] * prop.dl[1] + (roh - prop.cch) * (roh - prop.cch));
+      drof := drof + prop.gme * (prop.dl[1]);
+      dro2f := sqrt(prop.dl[1] * prop.dl[1] + (roho - prop.cch) * (roho - prop.cch));
+      dro2f := dro2f + prop.gme * (prop.dl[1]);
 
-    (* for 1 obst tree base path *)
-    dtof := sqrt(prop.dl[0] * prop.dl[0] + (toh - prop.cch) * (toh - prop.cch));
-    dtof := dtof + prop.gme * prop.dl[0];
-    dto1f := sqrt(prop.dl[0] * prop.dl[0] + (toho - prop.cch) * (toho - prop.cch));
-    dto1f := dto1f + prop.gme * prop.dl[0];
-    drof := sqrt(prop.dl[1] * prop.dl[1] + (roh - prop.cch) * (roh - prop.cch));
-    drof := drof + prop.gme * (prop.dl[1]);
-    dro2f := sqrt(prop.dl[1] * prop.dl[1] + (roho - prop.cch) * (roho - prop.cch));
-    dro2f := dro2f + prop.gme * (prop.dl[1]);
+      (* saalos coefficients preset for post-obstacle receive path *)
+      prop.tgh := prop.cch + 1.0;
+      prop.tsgh := prop.hhr;
+      rd := prop.dl[1];
 
-    (* saalos coefficients preset for post-obstacle receive path *)
-    prop.tgh := prop.cch + 1.0;
-    prop.tsgh := prop.hhr;
-    rd := prop.dl[1];
-
-    (* two obstacle diffraction calculation *)
-    if (trunc(ds) > 0) then  (* there are 2 obstacles *)
-    begin
-      if (trunc(prop.dl[1]) > 0.0) then (* receive site past 2nd peak *)
+      (* two obstacle diffraction calculation *)
+      if (trunc(ds) > 0) then  (* there are 2 obstacles *)
       begin
-        (* rounding attenuation *)
-        q := (1.607 - pk) * 151.0 * wa * th + xht;
-        (* ar:=0.05751*q-10*log10(q)-aht; *)
-
-        (* knife edge vs round weighting *)
-        q := (1.0 - 0.8 * exp(-d / 50e3)) * prop.dh;
-        q := (wd1 + xd1 / d) * mymin((q * prop.wn), 6283.2);
-        (* wd:=25.1/(25.1+sqrt(q)); *)
-
-        q := 0.6365 * prop.wn;
-
-        if (prop.the[1] < 0.2) then (* receive grazing angle below 0.2 rad *)
+        if (trunc(prop.dl[1]) > 0.0) then (* receive site past 2nd peak *)
         begin
-          (* knife edge attenuation for two obstructions *)
+          (* rounding attenuation *)
+          q := (1.607 - pk) * 151.0 * wa * th + xht;
+          (* ar:=0.05751*q-10*log10(q)-aht; *)
 
-          if (prop.hht < 3400) then  (* if below tree line, foliage top loss *)
-          begin
-            vv := q * abs(dto1 + dhh1 - dtro);
-            adiffv2 := -18.0 + sf2 * aknfe(vv);
-          end
-          else
-          begin
-            vv := q * abs(dto1 + dhh1 - dtro);
-            adiffv2 := aknfe(vv);
-          end;
+          (* knife edge vs round weighting *)
+          q := (1.0 - 0.8 * exp(-d / 50e3)) * prop.dh;
+          q := (wd1 + xd1 / d) * mymin((q * prop.wn), 6283.2);
+          (* wd:=25.1/(25.1+sqrt(q)); *)
 
-          if (prop.hhr < 3400) then
-          begin
-            vv := q * abs(dro2 + dhh2 - drto);
-            adiffv2 := adiffv2 + (-18.0 + sf2 * aknfe(vv));
-          end
-          else
-          begin
-            vv := q * abs(dro2 + dhh2 - drto);
-            adiffv2 := adiffv2 + aknfe(vv);
-          end;
-          (* finally, add clutter loss *)
-          closs := saalos(rd, prop);
-          adiffv2 := adiffv2 + mymin(22.0, closs);
-        end
-        else   (* rcvr site too close to 2nd obs *)
-        begin
-          (* knife edge attenuation for 1st obs *)
+          q := 0.6365 * prop.wn;
 
-          if (prop.hht < 3400) then
+          if (prop.the[1] < 0.2) then (* receive grazing angle below 0.2 rad *)
           begin
-            vv := q * abs(dto1 + dhh1 - dtro);
-            adiffv2 := -18.0 + sf2 * aknfe(vv);
+            (* knife edge attenuation for two obstructions *)
+
+            if (prop.hht < 3400) then  (* if below tree line, foliage top loss *)
+            begin
+              vv := q * abs(dto1 + dhh1 - dtro);
+              adiffv2 := -18.0 + sf2 * aknfe(vv);
+            end
+            else
+            begin
+              vv := q * abs(dto1 + dhh1 - dtro);
+              adiffv2 := aknfe(vv);
+            end;
+
+            if (prop.hhr < 3400) then
+            begin
+              vv := q * abs(dro2 + dhh2 - drto);
+              adiffv2 := adiffv2 + (-18.0 + sf2 * aknfe(vv));
+            end
+            else
+            begin
+              vv := q * abs(dro2 + dhh2 - drto);
+              adiffv2 := adiffv2 + aknfe(vv);
+            end;
+            (* finally, add clutter loss *)
+            closs := saalos(rd, prop);
+            adiffv2 := adiffv2 + mymin(22.0, closs);
           end
-          else
+          else   (* rcvr site too close to 2nd obs *)
           begin
-            vv := q * abs(dto1 + dhh1 - dtro);
-            adiffv2 := aknfe(vv);
-          end;
+            (* knife edge attenuation for 1st obs *)
+
+            if (prop.hht < 3400) then
+            begin
+              vv := q * abs(dto1 + dhh1 - dtro);
+              adiffv2 := -18.0 + sf2 * aknfe(vv);
+            end
+            else
+            begin
+              vv := q * abs(dto1 + dhh1 - dtro);
+              adiffv2 := aknfe(vv);
+            end;
 
           (* weighted calc. of knife vs rounded edge
            adiffv2=ar*wd+(1.0-wd)*adiffv2; *)
 
-          (* clutter path loss past 2nd peak *)
-          if (prop.the[1] < 1.22) then
-          begin
-            rd := prop.dl[1];
-
-            if (prop.the[1] > 0.6) then (* through foliage downhill *)
+            (* clutter path loss past 2nd peak *)
+            if (prop.the[1] < 1.22) then
             begin
-              prop.tgh := prop.cch;
+              rd := prop.dl[1];
+
+              if (prop.the[1] > 0.6) then (* through foliage downhill *)
+              begin
+                prop.tgh := prop.cch;
+              end
+              else  (* close to foliage, rcvr in foliage downslope *)
+              begin
+                vv := 0.6365 * prop.wn * abs(dro2 + dhh2 - drto);
+              end;
+              adiffv2 := adiffv2 + aknfe(vv);
+              closs := saalos(rd, prop);
+              adiffv2 := adiffv2 + mymin(closs, 22.0);
             end
-            else  (* close to foliage, rcvr in foliage downslope *)
+            else  (* rcvr very close to bare cliff or skyscraper *)
             begin
-              vv := 0.6365 * prop.wn * abs(dro2 + dhh2 - drto);
+              adiffv2 := 5.8 + 25.0;
             end;
-            adiffv2 := adiffv2 + aknfe(vv);
-            closs := saalos(rd, prop);
-            adiffv2 := adiffv2 + mymin(closs, 22.0);
-          end
-          else  (* rcvr very close to bare cliff or skyscraper *)
-          begin
-            adiffv2 := 5.8 + 25.0;
           end;
-        end;
-      end
-      else (* receive site is atop a 2nd peak *)
-      begin
-        vv := 0.6365 * prop.wn * abs(dto + dro - dtr);
-        adiffv2 := 5.8 + aknfe(vv);
-      end;
-    end
-    else (* for single obstacle *)
-    begin
-
-      if (trunc(prop.dl[1]) > 0.0) then (* receive site past 1st peak *)
-      begin
-
-        if (prop.the[1] < 0.2) then (* receive grazing angle less than .2 radians *)
+        end
+        else (* receive site is atop a 2nd peak *)
         begin
           vv := 0.6365 * prop.wn * abs(dto + dro - dtr);
+          adiffv2 := 5.8 + aknfe(vv);
+        end;
+      end
+      else (* for single obstacle *)
+      begin
 
-          if (prop.hht < 3400) then
+        if (trunc(prop.dl[1]) > 0.0) then (* receive site past 1st peak *)
+        begin
+
+          if (prop.the[1] < 0.2) then (* receive grazing angle less than .2 radians *)
           begin
-            sdl := 18.0;
-            sdl := power(10, (-sdl / 20));
-            (* ke phase difference with respect to direct t-r line *)
-            kedr := 0.159155 * prop.wn * abs(dto + dro - dtr);
-            arp := abs(kedr - (int(kedr)));
-            kem := aknfe(vv);
-            kem := power(10, (-kem / 20));
-            (* scatter path phase with respect to direct t-r line *)
-            sdr := 0.5 + 0.159155 * prop.wn * abs(dtof + drof - dtr);
-            srp := abs(sdr - (int(sdr)));
-            (* difference between scatter and ke phase in radians *)
-            pd := 6.283185307 * abs(srp - arp);
+            vv := 0.6365 * prop.wn * abs(dto + dro - dtr);
+
+            if (prop.hht < 3400) then
+            begin
+              sdl := 18.0;
+              sdl := power(10, (-sdl / 20));
+              (* ke phase difference with respect to direct t-r line *)
+              kedr := 0.159155 * prop.wn * abs(dto + dro - dtr);
+              arp := abs(kedr - (int(kedr)));
+              kem := aknfe(vv);
+              kem := power(10, (-kem / 20));
+              (* scatter path phase with respect to direct t-r line *)
+              sdr := 0.5 + 0.159155 * prop.wn * abs(dtof + drof - dtr);
+              srp := abs(sdr - (int(sdr)));
+              (* difference between scatter and ke phase in radians *)
+              pd := 6.283185307 * abs(srp - arp);
             (* report pd prior to restriction
                keep pd between 0 and pi radians and adjust for 3&4 quadrant *)
-            if (pd >= 3.141592654) then
-            begin
-              pd := 6.283185307 - pd;
-              csd := abq_alos(complexi(sdl, 0) + complexi(kem * -cos(pd), kem * -sin(pd)));
+              if (pd >= 3.141592654) then
+              begin
+                pd := 6.283185307 - pd;
+                csd := abq_alos(complexi(sdl, 0) +
+                  complexi(kem * -cos(pd), kem * -sin(pd)));
+              end
+              else
+              begin
+                csd := abq_alos(complexi(sdl, 0) +
+                  complexi(kem * cos(pd), kem * sin(pd)));
+              end;
+              (*csd=mymax(csd,0.0009); limits maximum loss value to 30.45 db *)
+              adiffv2 := -3.71 - 10 * log10(csd);
             end
             else
             begin
-              csd := abq_alos(complexi(sdl, 0) + complexi(kem * cos(pd), kem * sin(pd)));
-            end;
-            (*csd=mymax(csd,0.0009); limits maximum loss value to 30.45 db *)
-            adiffv2 := -3.71 - 10 * log10(csd);
-          end
-          else
-          begin
-            adiffv2 := aknfe(vv);
-          end;
-          (* finally, add clutter loss *)
-          closs := saalos(rd, prop);
-          adiffv2 := adiffv2 + mymin(closs, 22.0);
-        end
-        else  (* receive grazing angle too high *)
-        begin
-          if (prop.the[1] < 1.22) then
-          begin
-            rd := prop.dl[1];
-
-            if (prop.the[1] > 0.6) then (* through foliage downhill *)
-            begin
-              prop.tgh := prop.cch;
-            end
-            else  (* downhill slope just above foliage  *)
-            begin
-              vv := 0.6365 * prop.wn * abs(dto + dro - dtr);
               adiffv2 := aknfe(vv);
             end;
+            (* finally, add clutter loss *)
             closs := saalos(rd, prop);
-            adiffv2 := adiffv2 + mymin(22.0, closs);
+            adiffv2 := adiffv2 + mymin(closs, 22.0);
           end
-          else  (* receiver very close to bare cliff or skyscraper *)
+          else  (* receive grazing angle too high *)
           begin
-            adiffv2 := 5.8 + 25.0;
+            if (prop.the[1] < 1.22) then
+            begin
+              rd := prop.dl[1];
+
+              if (prop.the[1] > 0.6) then (* through foliage downhill *)
+              begin
+                prop.tgh := prop.cch;
+              end
+              else  (* downhill slope just above foliage  *)
+              begin
+                vv := 0.6365 * prop.wn * abs(dto + dro - dtr);
+                adiffv2 := aknfe(vv);
+              end;
+              closs := saalos(rd, prop);
+              adiffv2 := adiffv2 + mymin(22.0, closs);
+            end
+            else  (* receiver very close to bare cliff or skyscraper *)
+            begin
+              adiffv2 := 5.8 + 25.0;
+            end;
           end;
+        end
+        else  (* if occurs, receive site atop first peak  *)
+        begin
+          adiffv2 := 5.8;
         end;
-      end
-      else  (* if occurs, receive site atop first peak  *)
-      begin
-        adiffv2 := 5.8;
       end;
     end;
   end;
   Result := adiffv2;
 end;
 
-function ascat(const d: double; const prop: prop_type; const propa: propa_type): double;
+function ascat(var AProfile: TProfileData; const d: double): double;
 var
-  ad, rr, etq, h0s: double;
   h0, r1, r2, z0, ss, et, ett, th, q: double;
   ascatv, temp: double;
 begin
-  if (d = 0.0) then
+  with AProfile do
   begin
-    ad := prop.dl[0] - prop.dl[1];
-    rr := prop.he[1] / prop.rch[0];
-
-    if (ad < 0.0) then
+    if (d = 0.0) then
     begin
-      ad := -ad;
-      rr := 1.0 / rr;
-    end;
+      ad := prop.dl[0] - prop.dl[1];
 
-    etq := (5.67e-6 * prop.ens - 2.32e-3) * prop.ens + 0.031;
-    h0s := -15.0;
-    ascatv := 0.0;
-  end
-  else
-  begin
-    if (h0s > 15.0) then
-      h0 := h0s
+      if prop.rch[0] = 0 then
+        prop.rch := prop.he;
+
+      rr := prop.he[1] / prop.rch[0];
+
+      if (ad < 0.0) then
+      begin
+        ad := -ad;
+        rr := 1.0 / rr;
+      end;
+
+      etq := (5.67e-6 * prop.ens - 2.32e-3) * prop.ens + 0.031;
+      h0s := -15.0;
+      ascatv := 0.0;
+    end
     else
     begin
-      th := prop.the[0] + prop.the[1] + d * prop.gme;
-      r2 := 2.0 * prop.wn * th;
-      r1 := r2 * prop.he[0];
-      r2 := r2 * prop.he[1];
-
-      if (r1 < 0.2) and (r2 < 0.2) then
+      if (h0s > 15.0) then
+        h0 := h0s
+      else
       begin
-        Result := 1001.0;  // <==== early return
-        exit;
+        th := prop.the[0] + prop.the[1] + d * prop.gme;
+        r2 := 2.0 * prop.wn * th;
+        r1 := r2 * prop.he[0];
+        r2 := r2 * prop.he[1];
+
+        if (r1 < 0.2) and (r2 < 0.2) then
+        begin
+          Result := 1001.0;  // <==== early return
+          exit;
+        end;
+
+        ss := (d - ad) / (d + ad);
+        q := rr / ss;
+        ss := mymax(0.1, ss);
+        q := mymin(mymax(0.1, q), 10.0);
+        z0 := (d - ad) * (d + ad) * th * 0.25 / d;
+        (* et=(etq*exp(-pow(mymin(1.7,z0/8.0e3),6.0))+1.0)*z0/1.7556e3; *)
+
+        temp := mymin(1.7, z0 / 8.0e3);
+        temp := temp * temp * temp * temp * temp * temp;
+        et := (etq * exp(-temp) + 1.0) * z0 / 1.7556e3;
+
+        ett := mymax(et, 1.0);
+        h0 := (h0f(r1, ett) + h0f(r2, ett)) * 0.5;
+        h0 := h0 + mymin(h0, (1.38 - ln(ett)) * ln(ss) * ln(q) * 0.49);
+        h0 := FORTRAN_DIM(h0, 0.0);
+
+        if (et < 1.0) then
+        begin
+          (* h0=et*h0+(1.0-et)*4.343*log(pow((1.0+1.4142/r1)*(1.0+1.4142/r2),2.0)*(r1+r2)/(r1+r2+2.8284)); *)
+
+          temp := ((1.0 + 1.4142 / r1) * (1.0 + 1.4142 / r2));
+          h0 := et * h0 + (1.0 - et) * 4.343 * ln(
+            (temp * temp) * (r1 + r2) / (r1 + r2 + 2.8284));
+        end;
+
+        if (h0 > 15.0) and (h0s >= 0.0) then
+          h0 := h0s;
       end;
 
-      ss := (d - ad) / (d + ad);
-      q := rr / ss;
-      ss := mymax(0.1, ss);
-      q := mymin(mymax(0.1, q), 10.0);
-      z0 := (d - ad) * (d + ad) * th * 0.25 / d;
-      (* et=(etq*exp(-pow(mymin(1.7,z0/8.0e3),6.0))+1.0)*z0/1.7556e3; *)
-
-      temp := mymin(1.7, z0 / 8.0e3);
-      temp := temp * temp * temp * temp * temp * temp;
-      et := (etq * exp(-temp) + 1.0) * z0 / 1.7556e3;
-
-      ett := mymax(et, 1.0);
-      h0 := (h0f(r1, ett) + h0f(r2, ett)) * 0.5;
-      h0 := h0 + mymin(h0, (1.38 - ln(ett)) * ln(ss) * ln(q) * 0.49);
-      h0 := FORTRAN_DIM(h0, 0.0);
-
-      if (et < 1.0) then
-      begin
-        (* h0=et*h0+(1.0-et)*4.343*log(pow((1.0+1.4142/r1)*(1.0+1.4142/r2),2.0)*(r1+r2)/(r1+r2+2.8284)); *)
-
-        temp := ((1.0 + 1.4142 / r1) * (1.0 + 1.4142 / r2));
-        h0 := et * h0 + (1.0 - et) * 4.343 * ln(
-          (temp * temp) * (r1 + r2) / (r1 + r2 + 2.8284));
-      end;
-
-      if (h0 > 15.0) and (h0s >= 0.0) then
-        h0 := h0s;
+      h0s := h0;
+      th := propa.tha + d * prop.gme;
+      (* ascatv=ahd(th*d)+4.343*log(47.7*prop.wn*pow(th,4.0))-0.1*(prop.ens-301.0)*exp(-th*d/40e3)+h0; *)
+      ascatv := ahd(th * d) + 4.343 * ln(47.7 * prop.wn * (th * th * th * th)) -
+        0.1 * (prop.ens - 301.0) * exp(-th * d / 40e3) + h0;
     end;
-
-    h0s := h0;
-    th := propa.tha + d * prop.gme;
-    (* ascatv=ahd(th*d)+4.343*log(47.7*prop.wn*pow(th,4.0))-0.1*(prop.ens-301.0)*exp(-th*d/40e3)+h0; *)
-    ascatv := ahd(th * d) + 4.343 * ln(47.7 * prop.wn * (th * th * th * th)) -
-      0.1 * (prop.ens - 301.0) * exp(-th * d / 40e3) + h0;
   end;
-
   Result := ascatv;
 end;
 
@@ -931,221 +973,231 @@ begin
   Result := v;
 end;
 
-procedure qlrps(const fmhz, zsys, en0: double; const ipol: integer;
-  const eps, sgm: double; var prop: prop_type);
+procedure qlrps(var AProfile: TProfileData; const fmhz, zsys, en0: double;
+  const ipol: integer; const eps, sgm: double);
 var
   gma: double;
   zq, prop_zgnd: complex;
 begin
   gma := 157e-9;
 
-  prop.wn := fmhz / 47.7;
-  prop.ens := en0;
+  with AProfile do
+  begin
+    prop.wn := fmhz / 47.7;
+    prop.ens := en0;
 
-  if (zsys <> 0.0) then
-    prop.ens := prop.ens * exp(-zsys / 9460.0);
+    if (zsys <> 0.0) then
+      prop.ens := prop.ens * exp(-zsys / 9460.0);
 
-  prop.gme := gma * (1.0 - 0.04665 * exp(prop.ens / 179.3));
-  prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
-  zq := complexi(eps, 376.62 * sgm / prop.wn);
-  prop_zgnd := csqrt(zq - 1.0);
+    prop.gme := gma * (1.0 - 0.04665 * exp(prop.ens / 179.3));
+    prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
+    zq := complexi(eps, 376.62 * sgm / prop.wn);
+    prop_zgnd := csqrt(zq - 1.0);
 
-  if (ipol <> 0.0) then
-    prop_zgnd := prop_zgnd / zq;
+    if (ipol <> 0.0) then
+      prop_zgnd := prop_zgnd / zq;
 
-  prop.zgndreal := prop_zgnd.re;
-  prop.zgndimag := prop_zgnd.im;
+    prop.zgndreal := prop_zgnd.re;
+    prop.zgndimag := prop_zgnd.im;
+  end;
 end;
 
-function alos(const d: double; const prop: prop_type; const propa: propa_type): double;
+function alos(var AProfile: TProfileData; const d: double): double;
 var
   r, prop_zgnd: complex;
-  sps, wls, s, q, alosv: double;
+  sps, s, q, alosv: double;
 begin
-  prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
-
-  if (d = 0.0) then
+  with AProfile do
   begin
-    wls := 0.021 / (0.021 + prop.wn * prop.dh / mymax(10e3, propa.dlsa));
-    alosv := 0.0;
-  end
-  else
-  begin
-    q := (1.0 - 0.8 * exp(-d / 50e3)) * prop.dh;
-    s := 0.78 * q * exp(-power(q / 16.0, 0.25));
-    q := prop.he[0] + prop.he[1];
-    sps := q / sqrt(d * d + q * q);
-    r := (sps - prop_zgnd) / (sps + prop_zgnd) * exp(-mymin(10.0, prop.wn * s * sps));
-    q := abq_alos(r);
+    prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
 
-    if (q < 0.25) or (q < sps) then
-      r := r * sqrt(sps / q);
+    if (d = 0.0) then
+    begin
+      wls := 0.021 / (0.021 + prop.wn * prop.dh / mymax(10e3, propa.dlsa));
+      alosv := 0.0;
+    end
+    else
+    begin
+      q := (1.0 - 0.8 * exp(-d / 50e3)) * prop.dh;
+      s := 0.78 * q * exp(-power(q / 16.0, 0.25));
+      q := prop.he[0] + prop.he[1];
+      sps := q / sqrt(d * d + q * q);
+      r := (sps - prop_zgnd) / (sps + prop_zgnd) * exp(-mymin(10.0, prop.wn * s * sps));
+      q := abq_alos(r);
 
-    alosv := propa.emd * d + propa.aed;
-    q := prop.wn * prop.he[0] * prop.he[1] * 2.0 / d;
+      if (q < 0.25) or (q < sps) then
+        r := r * sqrt(sps / q);
 
-    if (q > 1.57) then
-      q := 3.14 - 2.4649 / q;
+      alosv := propa.emd * d + propa.aed;
+      q := prop.wn * prop.he[0] * prop.he[1] * 2.0 / d;
 
-    alosv := (-4.343 * ln(abq_alos(complexi(cos(q), -sin(q)) + r)) - alosv) *
-      wls + alosv;
+      if (q > 1.57) then
+        q := 3.14 - 2.4649 / q;
+
+      alosv := (-4.343 * ln(abq_alos(complexi(cos(q), -sin(q)) + r)) - alosv) *
+        wls + alosv;
+    end;
   end;
   Result := alosv;
 end;
 
 
-function alos2(const d: double; var prop: prop_type): double;
+function alos2(var AProfile: TProfileData; const d: double): double;
 var
   prop_zgnd, r: complex;
   alosv, cd, cr, dr, hr, hrg, ht, htg, hrp, re, s, sps, q, pd, drh: double;
 begin
-  prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
-
-  cd := 0.0;
-  cr := 0.0;
-  htg := prop.hg[0];
-  hrg := prop.hg[1];
-  ht := prop.ght;
-  hr := prop.ghr;
-  hrp := prop.rph;
-  pd := prop.dist;
-
-  if (d = 0.0) then
+  with AProfile do
   begin
-    alosv := 0.0;
-  end
-  else
-  begin
-    q := prop.he[0] + prop.he[1];
-    sps := q / sqrt(pd * pd + q * q);
-    q := (1.0 - 0.8 * exp(-pd / 50e3)) * prop.dh;
+    prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
 
-    if (prop.mdp < 0) then
+    cd := 0.0;
+    cr := 0.0;
+    htg := prop.hg[0];
+    hrg := prop.hg[1];
+    ht := prop.ght;
+    hr := prop.ghr;
+    hrp := prop.rph;
+    pd := prop.dist;
+
+    if (d = 0.0) then
     begin
-      dr := pd / (1 + hrg / htg);
-
-      if (dr < (0.5 * pd)) then
-      begin
-        drh := 6378137.0 - sqrt(-(0.5 * pd) * (0.5 * pd) + 6378137.0 *
-          6378137.0 + (0.5 * pd - dr) * (0.5 * pd - dr));
-      end
-      else
-      begin
-        drh := 6378137.0 - sqrt(-(0.5 * pd) * (0.5 * pd) + 6378137.0 *
-          6378137.0 + (dr - 0.5 * pd) * (dr - 0.5 * pd));
-      end;
-
-      if ((sps < 0.05) and (prop.cch > hrg) and (prop.dist < prop.dl[0])) then
-        (* if far from transmitter and receiver below canopy *)
-      begin
-        cd := mymax(0.01, pd * (prop.cch - hrg) / (htg - hrg));
-        cr := mymax(0.01, pd - dr + dr * (prop.cch - drh) / htg);
-        q := ((1.0 - 0.8 * exp(-pd / 50e3)) * prop.dh *
-          (mymin(-20 * log10(cd / cr), 1.0)));
-      end;
-    end;
-
-    s := 0.78 * q * exp(-power(q / 16.0, 0.25));
-    q := exp(-mymin(10.0, prop.wn * s * sps));
-    r := q * (sps - prop_zgnd) / (sps + prop_zgnd);
-    q := abq_alos(r);
-    q := mymin(q, 1.0);
-
-    if (q < 0.25) or (q < sps) then
-    begin
-      r := r * sqrt(sps / q);
-    end;
-
-    q := prop.wn * prop.he[0] * prop.he[1] / (pd * 3.1415926535897);
-
-    if (prop.mdp < 0) then
-    begin
-      q := prop.wn * ((ht - hrp) * (hr - hrp)) / (pd * 3.1415926535897);
-    end;
-    q := q - floor(q);
-
-    if (q < 0.5) then
-    begin
-      q := q * 3.1415926535897;
+      alosv := 0.0;
     end
     else
     begin
-      q := (1 - q) * 3.1415926535897;
-    end;
+      q := prop.he[0] + prop.he[1];
+      sps := q / sqrt(pd * pd + q * q);
+      q := (1.0 - 0.8 * exp(-pd / 50e3)) * prop.dh;
 
-                (* no longer valid complex conjugate removed
-       by removing minus sign from in front of sin function *)
-    re := abq_alos(complexi(cos(q), sin(q)) + r);
-    alosv := -10 * log10(re);
-    prop.tgh := prop.hg[0];  (*tx above gnd hgt set to antenna height AGL *)
-    prop.tsgh := prop.rch[0] - prop.hg[0]; (* tsgh set to tx site gl AMSL *)
-
-    if ((prop.hg[1] < prop.cch) and (prop.thera < 0.785) and (prop.thenr < 0.785)) then
-    begin
-      if (sps < 0.05) then
+      if (prop.mdp < 0) then
       begin
-        alosv := alosv + saalos(pd, prop);
+        dr := pd / (1 + hrg / htg);
+
+        if (dr < (0.5 * pd)) then
+        begin
+          drh := 6378137.0 - sqrt(-(0.5 * pd) * (0.5 * pd) + 6378137.0 *
+            6378137.0 + (0.5 * pd - dr) * (0.5 * pd - dr));
+        end
+        else
+        begin
+          drh := 6378137.0 - sqrt(-(0.5 * pd) * (0.5 * pd) + 6378137.0 *
+            6378137.0 + (dr - 0.5 * pd) * (dr - 0.5 * pd));
+        end;
+
+        if ((sps < 0.05) and (prop.cch > hrg) and (prop.dist < prop.dl[0])) then
+          (* if far from transmitter and receiver below canopy *)
+        begin
+          cd := mymax(0.01, pd * (prop.cch - hrg) / (htg - hrg));
+          cr := mymax(0.01, pd - dr + dr * (prop.cch - drh) / htg);
+          q := ((1.0 - 0.8 * exp(-pd / 50e3)) * prop.dh *
+            (mymin(-20 * log10(cd / cr), 1.0)));
+        end;
+      end;
+
+      s := 0.78 * q * exp(-power(q / 16.0, 0.25));
+      q := exp(-mymin(10.0, prop.wn * s * sps));
+      r := q * (sps - prop_zgnd) / (sps + prop_zgnd);
+      q := abq_alos(r);
+      q := mymin(q, 1.0);
+
+      if (q < 0.25) or (q < sps) then
+      begin
+        r := r * sqrt(sps / q);
+      end;
+
+      q := prop.wn * prop.he[0] * prop.he[1] / (pd * 3.1415926535897);
+
+      if (prop.mdp < 0) then
+      begin
+        q := prop.wn * ((ht - hrp) * (hr - hrp)) / (pd * 3.1415926535897);
+      end;
+      q := q - floor(q);
+
+      if (q < 0.5) then
+      begin
+        q := q * 3.1415926535897;
       end
       else
       begin
-        alosv := saalos(pd, prop);
+        q := (1 - q) * 3.1415926535897;
+      end;
+
+                (* no longer valid complex conjugate removed
+       by removing minus sign from in front of sin function *)
+      re := abq_alos(complexi(cos(q), sin(q)) + r);
+      alosv := -10 * log10(re);
+      prop.tgh := prop.hg[0];  (*tx above gnd hgt set to antenna height AGL *)
+      prop.tsgh := prop.rch[0] - prop.hg[0]; (* tsgh set to tx site gl AMSL *)
+
+      if ((prop.hg[1] < prop.cch) and (prop.thera < 0.785) and (prop.thenr < 0.785)) then
+      begin
+        if (sps < 0.05) then
+        begin
+          alosv := alosv + saalos(pd, prop);
+        end
+        else
+        begin
+          alosv := saalos(pd, prop);
+        end;
       end;
     end;
+    alosv := mymin(22.0, alosv);
   end;
-  alosv := mymin(22.0, alosv);
   Result := alosv;
 end;
 
-procedure qlra(const kst: array of integer; const klimx, mdvarx: integer;
-  var prop: prop_type; var propv: propv_type);
+procedure qlra(var AProfile: TProfileData; const kst: array of integer;
+  const klimx, mdvarx: integer);
 var
   q: double;
   j: integer;
 begin
-  for j := 0 to 1 do
+  with AProfile do
   begin
-    if (kst[j] <= 0) then
-      prop.he[j] := prop.hg[j]
-    else
+    for j := 0 to 1 do
     begin
-      q := 4.0;
+      if (kst[j] <= 0) then
+        prop.he[j] := prop.hg[j]
+      else
+      begin
+        q := 4.0;
 
-      if (kst[j] <> 1) then
-        q := 9.0;
+        if (kst[j] <> 1) then
+          q := 9.0;
 
-      if (prop.hg[j] < 5.0) then
-        q := q * sin(0.3141593 * prop.hg[j]);
+        if (prop.hg[j] < 5.0) then
+          q := q * sin(0.3141593 * prop.hg[j]);
 
-      prop.he[j] := prop.hg[j] + (1.0 + q) *
-        exp(-mymin(20.0, 2.0 * prop.hg[j] / mymax(1e-3, prop.dh)));
+        prop.he[j] := prop.hg[j] + (1.0 + q) *
+          exp(-mymin(20.0, 2.0 * prop.hg[j] / mymax(1e-3, prop.dh)));
+      end;
+
+      q := sqrt(2.0 * prop.he[j] / prop.gme);
+      prop.dl[j] := q * exp(-0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+      prop.the[j] := (0.65 * prop.dh * (q / prop.dl[j] - 1.0) - 2.0 * prop.he[j]) / q;
     end;
 
-    q := sqrt(2.0 * prop.he[j] / prop.gme);
-    prop.dl[j] := q * exp(-0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
-    prop.the[j] := (0.65 * prop.dh * (q / prop.dl[j] - 1.0) - 2.0 * prop.he[j]) / q;
-  end;
+    prop.mdp := 1;
+    propv.lvar := mymax(propv.lvar, 3);
 
-  prop.mdp := 1;
-  propv.lvar := mymax(propv.lvar, 3);
+    if (mdvarx >= 0) then
+    begin
+      propv.mdvar := mdvarx;
+      propv.lvar := mymax(propv.lvar, 4);
+    end;
 
-  if (mdvarx >= 0) then
-  begin
-    propv.mdvar := mdvarx;
-    propv.lvar := mymax(propv.lvar, 4);
-  end;
-
-  if (klimx > 0) then
-  begin
-    propv.klim := klimx;
-    propv.lvar := 5;
+    if (klimx > 0) then
+    begin
+      propv.klim := klimx;
+      propv.lvar := 5;
+    end;
   end;
 end;
 
 
-procedure lrprop(const d: double; var prop: prop_type; var propa: propa_type);
+procedure lrprop(var AProfile: TProfileData; const d: double);
 var
-  wlos, wscat: boolean;
-  dmin, xae: double;
   prop_zgnd: complex;
   a0, a1, a2, a3, a4, a5, a6: double;
   d0, d1, d2, d3, d4, d5, d6: double;
@@ -1155,179 +1207,180 @@ var
 
 begin
   (* PaulM_lrprop used for ITM *)
-  prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
-
-  if (prop.mdp <> 0) then
+  with AProfile do
   begin
-    for j := 0 to 1 do
-      propa.dls[j] := sqrt(2.0 * prop.he[j] / prop.gme);
+    prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
 
-    propa.dlsa := propa.dls[0] + propa.dls[1];
-    propa.dla := prop.dl[0] + prop.dl[1];
-    propa.tha := mymax(prop.the[0] + prop.the[1], -propa.dla * prop.gme);
-    wlos := False;
-    wscat := False;
+    if (prop.mdp <> 0) then
+    begin
+      for j := 0 to 1 do
+        propa.dls[j] := sqrt(2.0 * prop.he[j] / prop.gme);
 
-    if (prop.wn < 0.838) or (prop.wn > 210.0) then
-      prop.kwx := mymax(prop.kwx, 1);
+      propa.dlsa := propa.dls[0] + propa.dls[1];
+      propa.dla := prop.dl[0] + prop.dl[1];
+      propa.tha := mymax(prop.the[0] + prop.the[1], -propa.dla * prop.gme);
+      wlos := False;
+      wscat := False;
 
-    for j := 0 to 1 do
-      if (prop.hg[j] < 1.0) or (prop.hg[j] > 1000.0) then
+      if (prop.wn < 0.838) or (prop.wn > 210.0) then
         prop.kwx := mymax(prop.kwx, 1);
 
-    for j := 0 to 1 do
-      if (abs(prop.the[j]) > 200e-3) or (prop.dl[j] < 0.1 * propa.dls[j]) or
-        (prop.dl[j] > 3.0 * propa.dls[j]) then
-        prop.kwx := mymax(prop.kwx, 3);
+      for j := 0 to 1 do
+        if (prop.hg[j] < 1.0) or (prop.hg[j] > 1000.0) then
+          prop.kwx := mymax(prop.kwx, 1);
 
-    if (prop.ens < 250.0) or (prop.ens > 400.0) or (prop.gme < 75e-9) or
-      (prop.gme > 250e-9) or (prop_zgnd.re <= abs(prop_zgnd.im)) or
-      (prop.wn < 0.419) or (prop.wn > 420.0) then
-      prop.kwx := 4;
+      for j := 0 to 1 do
+        if (abs(prop.the[j]) > 200e-3) or (prop.dl[j] < 0.1 * propa.dls[j]) or
+          (prop.dl[j] > 3.0 * propa.dls[j]) then
+          prop.kwx := mymax(prop.kwx, 3);
 
-    for j := 0 to 1 do
-      if (prop.hg[j] < 0.5) or (prop.hg[j] > 3000.0) then
+      if (prop.ens < 250.0) or (prop.ens > 400.0) or (prop.gme < 75e-9) or
+        (prop.gme > 250e-9) or (prop_zgnd.re <= abs(prop_zgnd.im)) or
+        (prop.wn < 0.419) or (prop.wn > 420.0) then
         prop.kwx := 4;
 
-    dmin := abs(prop.he[0] - prop.he[1]) / 200e-3;
-    q := adiff(0.0, prop, propa);
-    (* xae=pow(prop.wn*pow(prop.gme,2.),-THIRD); -- JDM made argument 2 a double *)
-    xae := power(prop.wn * (prop.gme * prop.gme), -THIRD);  (* No 2nd pow() *)
-    d3 := mymax(propa.dlsa, 1.3787 * xae + propa.dla);
-    d4 := d3 + 2.7574 * xae;
-    a3 := adiff(d3, prop, propa);
-    a4 := adiff(d4, prop, propa);
-    propa.emd := (a4 - a3) / (d4 - d3);
-    propa.aed := a3 - propa.emd * d3;
-  end;
+      for j := 0 to 1 do
+        if (prop.hg[j] < 0.5) or (prop.hg[j] > 3000.0) then
+          prop.kwx := 4;
 
-  if (prop.mdp >= 0) then
-  begin
-    prop.mdp := 0;
-    prop.dist := d;
-  end;
+      dmin := abs(prop.he[0] - prop.he[1]) / 200e-3;
+      q := adiff(AProfile, 0.0);
+      (* xae=pow(prop.wn*pow(prop.gme,2.),-THIRD); -- JDM made argument 2 a double *)
+      xae := power(prop.wn * (prop.gme * prop.gme), -THIRD);  (* No 2nd pow() *)
+      d3 := mymax(propa.dlsa, 1.3787 * xae + propa.dla);
+      d4 := d3 + 2.7574 * xae;
+      a3 := adiff(AProfile, d3);
+      a4 := adiff(AProfile, d4);
+      propa.emd := (a4 - a3) / (d4 - d3);
+      propa.aed := a3 - propa.emd * d3;
+    end;
 
-  if (prop.dist > 0.0) then
-  begin
-    if (prop.dist > 1000e3) then
-      prop.kwx := mymax(prop.kwx, 1);
-
-    if (prop.dist < dmin) then
-      prop.kwx := mymax(prop.kwx, 3);
-
-    if (prop.dist < 1e3) or (prop.dist > 2000e3) then
-      prop.kwx := 4;
-  end;
-
-  if (prop.dist < propa.dlsa) then
-  begin
-    if (not wlos) then
+    if (prop.mdp >= 0) then
     begin
-      q := alos(0.0, prop, propa);
-      d2 := propa.dlsa;
-      a2 := propa.aed + d2 * propa.emd;
-      d0 := 1.908 * prop.wn * prop.he[0] * prop.he[1];
+      prop.mdp := 0;
+      prop.dist := d;
+    end;
 
-      if (propa.aed >= 0.0) then
+    if (prop.dist > 0.0) then
+    begin
+      if (prop.dist > 1000e3) then
+        prop.kwx := mymax(prop.kwx, 1);
+
+      if (prop.dist < dmin) then
+        prop.kwx := mymax(prop.kwx, 3);
+
+      if (prop.dist < 1e3) or (prop.dist > 2000e3) then
+        prop.kwx := 4;
+    end;
+
+    if (prop.dist < propa.dlsa) then
+    begin
+      if (not wlos) then
       begin
-        d0 := mymin(d0, 0.5 * propa.dla);
-        d1 := d0 + 0.25 * (propa.dla - d0);
-      end
-      else
-        d1 := mymax(-propa.aed / propa.emd, 0.25 * propa.dla);
+        q := alos(AProfile, 0.0);
+        d2 := propa.dlsa;
+        a2 := propa.aed + d2 * propa.emd;
+        d0 := 1.908 * prop.wn * prop.he[0] * prop.he[1];
 
-      a1 := alos(d1, prop, propa);
-      wq := False;
-
-      if (d0 < d1) then
-      begin
-        a0 := alos(d0, prop, propa);
-        q := ln(d2 / d0);
-        propa.ak2 := mymax(0.0, ((d2 - d0) * (a1 - a0) - (d1 - d0) * (a2 - a0)) /
-          ((d2 - d0) * ln(d1 / d0) - (d1 - d0) * q));
-        wq := (propa.aed >= 0.0) or (propa.ak2 > 0.0);
-
-        if (wq) then
+        if (propa.aed >= 0.0) then
         begin
-          propa.ak1 := (a2 - a0 - propa.ak2 * q) / (d2 - d0);
+          d0 := mymin(d0, 0.5 * propa.dla);
+          d1 := d0 + 0.25 * (propa.dla - d0);
+        end
+        else
+          d1 := mymax(-propa.aed / propa.emd, 0.25 * propa.dla);
 
-          if (propa.ak1 < 0.0) then
+        a1 := alos(AProfile, d1);
+        wq := False;
+
+        if (d0 < d1) then
+        begin
+          a0 := alos(AProfile, d0);
+          q := ln(d2 / d0);
+          propa.ak2 := mymax(0.0, ((d2 - d0) * (a1 - a0) - (d1 - d0) * (a2 - a0)) /
+            ((d2 - d0) * ln(d1 / d0) - (d1 - d0) * q));
+          wq := (propa.aed >= 0.0) or (propa.ak2 > 0.0);
+
+          if (wq) then
           begin
-            propa.ak1 := 0.0;
-            propa.ak2 := FORTRAN_DIM(a2, a0) / q;
+            propa.ak1 := (a2 - a0 - propa.ak2 * q) / (d2 - d0);
 
-            if (propa.ak2 = 0.0) then
+            if (propa.ak1 < 0.0) then
+            begin
+              propa.ak1 := 0.0;
+              propa.ak2 := FORTRAN_DIM(a2, a0) / q;
+
+              if (propa.ak2 = 0.0) then
+                propa.ak1 := propa.emd;
+            end;
+          end
+          else
+          begin
+            propa.ak2 := 0.0;
+            propa.ak1 := (a2 - a1) / (d2 - d1);
+
+            if (propa.ak1 <= 0.0) then
               propa.ak1 := propa.emd;
           end;
         end
         else
         begin
-          propa.ak2 := 0.0;
           propa.ak1 := (a2 - a1) / (d2 - d1);
+          propa.ak2 := 0.0;
 
           if (propa.ak1 <= 0.0) then
             propa.ak1 := propa.emd;
         end;
-      end
-      else
-      begin
-        propa.ak1 := (a2 - a1) / (d2 - d1);
-        propa.ak2 := 0.0;
 
-        if (propa.ak1 <= 0.0) then
-          propa.ak1 := propa.emd;
+        propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * ln(d2);
+        wlos := True;
       end;
 
-      propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * ln(d2);
-      wlos := True;
+      if (prop.dist > 0.0) then
+        prop.aref := propa.ael + propa.ak1 * prop.dist + propa.ak2 * ln(prop.dist);
     end;
 
-    if (prop.dist > 0.0) then
-      prop.aref := propa.ael + propa.ak1 * prop.dist + propa.ak2 * ln(prop.dist);
-  end;
-
-  if (prop.dist <= 0.0) or (prop.dist >= propa.dlsa) then
-  begin
-    if (not wscat) then
+    if (prop.dist <= 0.0) or (prop.dist >= propa.dlsa) then
     begin
-      q := ascat(0.0, prop, propa);
-      d5 := propa.dla + 200e3;
-      d6 := d5 + 200e3;
-      a6 := ascat(d6, prop, propa);
-      a5 := ascat(d5, prop, propa);
+      if (not wscat) then
+      begin
+        q := ascat(AProfile, 0.0);
+        d5 := propa.dla + 200e3;
+        d6 := d5 + 200e3;
+        a6 := ascat(AProfile, d6);
+        a5 := ascat(AProfile, d5);
 
-      if (a5 < 1000.0) then
-      begin
-        propa.ems := (a6 - a5) / 200e3;
-        propa.dx := mymax(propa.dlsa, mymax(propa.dla + 0.3 * xae *
-          ln(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
-          (propa.emd - propa.ems)));
-        propa.aes := (propa.emd - propa.ems) * propa.dx + propa.aed;
-      end
-      else
-      begin
-        propa.ems := propa.emd;
-        propa.aes := propa.aed;
-        propa.dx := 10.e6;
+        if (a5 < 1000.0) then
+        begin
+          propa.ems := (a6 - a5) / 200e3;
+          propa.dx := mymax(propa.dlsa, mymax(propa.dla + 0.3 * xae *
+            ln(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
+            (propa.emd - propa.ems)));
+          propa.aes := (propa.emd - propa.ems) * propa.dx + propa.aed;
+        end
+        else
+        begin
+          propa.ems := propa.emd;
+          propa.aes := propa.aed;
+          propa.dx := 10.e6;
+        end;
+
+        wscat := True;
       end;
 
-      wscat := True;
+      if (prop.dist > propa.dx) then
+        prop.aref := propa.aes + propa.ems * prop.dist
+      else
+        prop.aref := propa.aed + propa.emd * prop.dist;
     end;
-
-    if (prop.dist > propa.dx) then
-      prop.aref := propa.aes + propa.ems * prop.dist
-    else
-      prop.aref := propa.aed + propa.emd * prop.dist;
+    prop.aref := mymax(prop.aref, 0.0);
   end;
-  prop.aref := mymax(prop.aref, 0.0);
 end;
 
 
 
-procedure lrprop2(const d: double; var prop: prop_type; var propa: propa_type);
+procedure lrprop2(var AProfile: TProfileData; const d: double);
 var
-  wlos, wscat: boolean;
-  dmin, xae: double;
   prop_zgnd: complex;
   pd1: double;
   a0, a1, a2, a3, a4, a5, a6, iw: double;
@@ -1336,251 +1389,254 @@ var
   q: double;
   j: integer;
 begin
-  (* ITWOM_lrprop2 *)
-  prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
-  iw := prop.tiw;
-  pd1 := prop.dist;
-  propa.dx := 2000000.0;
-
-  if (prop.mdp <> 0) then (* if oper. mode is not 0, i.e. not area mode ongoing *)
+  with AProfile do
   begin
-    for j := 0 to 1 do
-      propa.dls[j] := sqrt(2.0 * prop.he[j] / prop.gme);
+    (* ITWOM_lrprop2 *)
+    prop_zgnd := complexi(prop.zgndreal, prop.zgndimag);
+    iw := prop.tiw;
+    pd1 := prop.dist;
+    propa.dx := 2000000.0;
 
-    propa.dlsa := propa.dls[0] + propa.dls[1];
-    propa.dlsa := mymin(propa.dlsa, 1000000.0);
-    propa.dla := prop.dl[0] + prop.dl[1];
-    propa.tha := mymax(prop.the[0] + prop.the[1], -propa.dla * prop.gme);
-    wlos := False;
-    wscat := False;
+    if (prop.mdp <> 0) then (* if oper. mode is not 0, i.e. not area mode ongoing *)
+    begin
+      for j := 0 to 1 do
+        propa.dls[j] := sqrt(2.0 * prop.he[j] / prop.gme);
 
-    (*checking for parameters-in-range, error codes set if not *)
+      propa.dlsa := propa.dls[0] + propa.dls[1];
+      propa.dlsa := mymin(propa.dlsa, 1000000.0);
+      propa.dla := prop.dl[0] + prop.dl[1];
+      propa.tha := mymax(prop.the[0] + prop.the[1], -propa.dla * prop.gme);
+      wlos := False;
+      wscat := False;
 
-    if (prop.wn < 0.838) or (prop.wn > 210.0) then
-      prop.kwx := mymax(prop.kwx, 1);
+      (*checking for parameters-in-range, error codes set if not *)
 
-    for j := 0 to 1 do
-      if (prop.hg[j] < 1.0) or (prop.hg[j] > 1000.0) then
+      if (prop.wn < 0.838) or (prop.wn > 210.0) then
         prop.kwx := mymax(prop.kwx, 1);
 
-    if (abs(prop.the[0]) > 200e-3) then
-      prop.kwx := mymax(prop.kwx, 3);
+      for j := 0 to 1 do
+        if (prop.hg[j] < 1.0) or (prop.hg[j] > 1000.0) then
+          prop.kwx := mymax(prop.kwx, 1);
 
-    if (abs(prop.the[1]) > 1.220) then
-      prop.kwx := mymax(prop.kwx, 3);
+      if (abs(prop.the[0]) > 200e-3) then
+        prop.kwx := mymax(prop.kwx, 3);
+
+      if (abs(prop.the[1]) > 1.220) then
+        prop.kwx := mymax(prop.kwx, 3);
 
     (*for (j=0; j<2; j++)
          if (prop.dl[j]<0.1*propa.dls[j] || prop.dl[j]>3.0*propa.dls[j])
         prop.kwx=mymax(prop.kwx,3);  *)
 
-    if (prop.ens < 250.0) or (prop.ens > 400.0) or (prop.gme < 75e-9) or
-      (prop.gme > 250e-9) or (prop_zgnd.re <= abs(prop_zgnd.im)) or
-      (prop.wn < 0.419) or (prop.wn > 420.0) then
-      prop.kwx := 4;
-
-    for j := 0 to 1 do
-      if (prop.hg[j] < 0.5) or (prop.hg[j] > 3000.0) then
+      if (prop.ens < 250.0) or (prop.ens > 400.0) or (prop.gme < 75e-9) or
+        (prop.gme > 250e-9) or (prop_zgnd.re <= abs(prop_zgnd.im)) or
+        (prop.wn < 0.419) or (prop.wn > 420.0) then
         prop.kwx := 4;
 
-    dmin := abs(prop.he[0] - prop.he[1]) / 200e-3;
-    q := adiff2(0.0, prop, propa);
-    xae := power(prop.wn * (prop.gme * prop.gme), -THIRD);
-    d3 := mymax(propa.dlsa, 1.3787 * xae + propa.dla);
-    d4 := d3 + 2.7574 * xae;
-    a3 := adiff2(d3, prop, propa);
-    a4 := adiff2(d4, prop, propa);
-    propa.emd := (a4 - a3) / (d4 - d3);
-    propa.aed := a3 - propa.emd * d3;
-  end;
+      for j := 0 to 1 do
+        if (prop.hg[j] < 0.5) or (prop.hg[j] > 3000.0) then
+          prop.kwx := 4;
 
-  if (prop.mdp >= 0) then (* if initializing the area mode *)
-  begin
-    prop.mdp := 0;   (* area mode is initialized *)
-    prop.dist := d;
-  end;
+      dmin := abs(prop.he[0] - prop.he[1]) / 200e-3;
+      q := adiff2(AProfile, 0.0);
+      xae := power(prop.wn * (prop.gme * prop.gme), -THIRD);
+      d3 := mymax(propa.dlsa, 1.3787 * xae + propa.dla);
+      d4 := d3 + 2.7574 * xae;
+      a3 := adiff2(AProfile, d3);
+      a4 := adiff2(AProfile, d4);
+      propa.emd := (a4 - a3) / (d4 - d3);
+      propa.aed := a3 - propa.emd * d3;
+    end;
 
-  if (prop.dist > 0.0) then
-  begin
-    if (prop.dist > 1000e3) then
-      (* prop.dist being in meters, if greater than 1000 km, kwx=1 *)
-      prop.kwx := mymax(prop.kwx, 1);
+    if (prop.mdp >= 0) then (* if initializing the area mode *)
+    begin
+      prop.mdp := 0;   (* area mode is initialized *)
+      prop.dist := d;
+    end;
 
-    if (prop.dist < dmin) then
-      prop.kwx := mymax(prop.kwx, 3);
+    if (prop.dist > 0.0) then
+    begin
+      if (prop.dist > 1000e3) then
+        (* prop.dist being in meters, if greater than 1000 km, kwx=1 *)
+        prop.kwx := mymax(prop.kwx, 1);
 
-    if (prop.dist < 1e3) or (prop.dist > 2000e3) then
-      prop.kwx := 4;
-  end;
+      if (prop.dist < dmin) then
+        prop.kwx := mymax(prop.kwx, 3);
 
-  if (prop.dist < propa.dlsa) then
-  begin
+      if (prop.dist < 1e3) or (prop.dist > 2000e3) then
+        prop.kwx := 4;
+    end;
 
-    if (iw <= 0.0) then  (* if interval width is zero or less, used for area mode *)
+    if (prop.dist < propa.dlsa) then
     begin
 
-      if (not wlos) then
+      if (iw <= 0.0) then  (* if interval width is zero or less, used for area mode *)
       begin
-        q := alos2(0.0, prop);
-        d2 := propa.dlsa;
-        a2 := propa.aed + d2 * propa.emd;
-        d0 := 1.908 * prop.wn * prop.he[0] * prop.he[1];
 
-        if (propa.aed > 0.0) then
+        if (not wlos) then
         begin
-          prop.aref := propa.aed + propa.emd * prop.dist;
-        end
-        else
-        begin
-          if (propa.aed = 0.0) then
+          q := alos2(AProfile, 0.0);
+          d2 := propa.dlsa;
+          a2 := propa.aed + d2 * propa.emd;
+          d0 := 1.908 * prop.wn * prop.he[0] * prop.he[1];
+
+          if (propa.aed > 0.0) then
           begin
-            d0 := mymin(d0, 0.5 * propa.dla);
-            d1 := d0 + 0.25 * (propa.dla - d0);
+            prop.aref := propa.aed + propa.emd * prop.dist;
           end
-          else  (* aed less than zero *)
+          else
           begin
-            d1 := mymax(-propa.aed / propa.emd, 0.25 * propa.dla);
-          end;
-          a1 := alos2(d1, prop);
-          wq := False;
-
-          if (d0 < d1) then
-          begin
-            a0 := alos2(d0, prop);
-            a2 := mymin(a2, alos2(d2, prop));
-            q := ln(d2 / d0);
-            propa.ak2 :=
-              mymax(0.0, ((d2 - d0) * (a1 - a0) - (d1 - d0) * (a2 - a0)) /
-              ((d2 - d0) * ln(d1 / d0) - (d1 - d0) * q));
-            wq := (propa.aed >= 0.0) or (propa.ak2 > 0.0);
-
-            if (wq) then
+            if (propa.aed = 0.0) then
             begin
-              propa.ak1 := (a2 - a0 - propa.ak2 * q) / (d2 - d0);
+              d0 := mymin(d0, 0.5 * propa.dla);
+              d1 := d0 + 0.25 * (propa.dla - d0);
+            end
+            else  (* aed less than zero *)
+            begin
+              d1 := mymax(-propa.aed / propa.emd, 0.25 * propa.dla);
+            end;
+            a1 := alos2(AProfile, d1);
+            wq := False;
 
-              if (propa.ak1 < 0.0) then
+            if (d0 < d1) then
+            begin
+              a0 := alos2(AProfile, d0);
+              a2 := mymin(a2, alos2(AProfile, d2));
+              q := ln(d2 / d0);
+              propa.ak2 :=
+                mymax(0.0, ((d2 - d0) * (a1 - a0) - (d1 - d0) * (a2 - a0)) /
+                ((d2 - d0) * ln(d1 / d0) - (d1 - d0) * q));
+              wq := (propa.aed >= 0.0) or (propa.ak2 > 0.0);
+
+              if (wq) then
               begin
-                propa.ak1 := 0.0;
-                propa.ak2 := FORTRAN_DIM(a2, a0) / q;
+                propa.ak1 := (a2 - a0 - propa.ak2 * q) / (d2 - d0);
 
-                if (propa.ak2 = 0.0) then
-                  propa.ak1 := propa.emd;
+                if (propa.ak1 < 0.0) then
+                begin
+                  propa.ak1 := 0.0;
+                  propa.ak2 := FORTRAN_DIM(a2, a0) / q;
+
+                  if (propa.ak2 = 0.0) then
+                    propa.ak1 := propa.emd;
+                end;
               end;
             end;
+
+            if (not wq) then
+            begin
+              propa.ak1 := FORTRAN_DIM(a2, a1) / (d2 - d1);
+              propa.ak2 := 0.0;
+
+              if (propa.ak1 = 0.0) then
+                propa.ak1 := propa.emd;
+            end;
+
+            propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * ln(d2);
+            wlos := True;
           end;
+        end;
+      end
+      else  (* for ITWOM point-to-point mode *)
+      begin
 
-          if (not wq) then
-          begin
-            propa.ak1 := FORTRAN_DIM(a2, a1) / (d2 - d1);
-            propa.ak2 := 0.0;
-
-            if (propa.ak1 = 0.0) then
-              propa.ak1 := propa.emd;
-          end;
-
-          propa.ael := a2 - propa.ak1 * d2 - propa.ak2 * ln(d2);
+        if (not wlos) then
+        begin
+          q := alos2(AProfile, 0.0); (* coefficient setup *)
           wlos := True;
         end;
-      end;
-    end
-    else  (* for ITWOM point-to-point mode *)
-    begin
 
-      if (not wlos) then
-      begin
-        q := alos2(0.0, prop); (* coefficient setup *)
-        wlos := True;
-      end;
-
-      if (prop.los = 1) then (* if line of sight *)
-      begin
-        prop.aref := alos2(pd1, prop);
-      end
-      else
-      begin
-        if (trunc(prop.dist - prop.dl[0]) = 0) then  (* if at 1st horiz *)
+        if (prop.los = 1) then (* if line of sight *)
         begin
-          prop.aref := 5.8 + alos2(pd1, prop);
-        end
-        else if (trunc(prop.dist - prop.dl[0]) > 0.0) then    (* if past 1st horiz *)
-        begin
-          q := adiff2(0.0, prop, propa);
-          prop.aref := adiff2(pd1, prop, propa);
+          prop.aref := alos2(AProfile, pd1);
         end
         else
         begin
-          prop.aref := 1.0;
-        end;
+          if (trunc(prop.dist - prop.dl[0]) = 0) then  (* if at 1st horiz *)
+          begin
+            prop.aref := 5.8 + alos2(AProfile, pd1);
+          end
+          else if (trunc(prop.dist - prop.dl[0]) > 0.0) then    (* if past 1st horiz *)
+          begin
+            q := adiff2(AProfile, 0.0);
+            prop.aref := adiff2(AProfile, pd1);
+          end
+          else
+          begin
+            prop.aref := 1.0;
+          end;
 
+        end;
       end;
     end;
-  end;
 
-  (* los and diff. range coefficents done. Starting troposcatter *)
-  if (prop.dist <= 0.0) or (prop.dist >= propa.dlsa) then
-  begin
-    if (iw = 0.0) then (* area mode *)
+    (* los and diff. range coefficents done. Starting troposcatter *)
+    if (prop.dist <= 0.0) or (prop.dist >= propa.dlsa) then
     begin
-      if (not wscat) then
+      if (iw = 0.0) then (* area mode *)
       begin
-        q := ascat(0.0, prop, propa);
-        d5 := propa.dla + 200e3;
-        d6 := d5 + 200e3;
-        a6 := ascat(d6, prop, propa);
-        a5 := ascat(d5, prop, propa);
-
-        if (a5 < 1000.0) then
+        if (not wscat) then
         begin
-          propa.ems := (a6 - a5) / 200e3;
-          propa.dx := mymax(propa.dlsa, mymax(propa.dla + 0.3 * xae *
-            ln(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
-            (propa.emd - propa.ems)));
+          q := ascat(AProfile, 0.0);
+          d5 := propa.dla + 200e3;
+          d6 := d5 + 200e3;
+          a6 := ascat(AProfile, d6);
+          a5 := ascat(AProfile, d5);
 
-          propa.aes := (propa.emd - propa.ems) * propa.dx + propa.aed;
+          if (a5 < 1000.0) then
+          begin
+            propa.ems := (a6 - a5) / 200e3;
+            propa.dx := mymax(propa.dlsa, mymax(propa.dla + 0.3 *
+              xae * ln(47.7 * prop.wn), (a5 - propa.aed - propa.ems * d5) /
+              (propa.emd - propa.ems)));
+
+            propa.aes := (propa.emd - propa.ems) * propa.dx + propa.aed;
+          end
+          else
+          begin
+            propa.ems := propa.emd;
+            propa.aes := propa.aed;
+            propa.dx := 10000000;
+          end;
+          wscat := True;
+        end;
+
+        if (prop.dist > propa.dx) then
+        begin
+          prop.aref := propa.aes + propa.ems * prop.dist;
         end
         else
         begin
-          propa.ems := propa.emd;
-          propa.aes := propa.aed;
-          propa.dx := 10000000;
+          prop.aref := propa.aed + propa.emd * prop.dist;
         end;
-        wscat := True;
-      end;
-
-      if (prop.dist > propa.dx) then
-      begin
-        prop.aref := propa.aes + propa.ems * prop.dist;
       end
-      else
+      else   (* ITWOM mode  q used to preset coefficients with zero input *)
       begin
-        prop.aref := propa.aed + propa.emd * prop.dist;
-      end;
-    end
-    else   (* ITWOM mode  q used to preset coefficients with zero input *)
-    begin
-      if (not wscat) then
-      begin
-        d5 := 0.0;
-        d6 := 0.0;
-        q := ascat(0.0, prop, propa);
-        a6 := ascat(pd1, prop, propa);
-        q := adiff2(0.0, prop, propa);
-        a5 := adiff2(pd1, prop, propa);
+        if (not wscat) then
+        begin
+          d5 := 0.0;
+          d6 := 0.0;
+          q := ascat(AProfile, 0.0);
+          a6 := ascat(AProfile, pd1);
+          q := adiff2(AProfile, 0.0);
+          a5 := adiff2(AProfile, pd1);
 
-        if (a5 <= a6) then
-        begin
-          propa.dx := 10000000;
-          prop.aref := a5;
-        end
-        else
-        begin
-          propa.dx := propa.dlsa;
-          prop.aref := a6;
+          if (a5 <= a6) then
+          begin
+            propa.dx := 10000000;
+            prop.aref := a5;
+          end
+          else
+          begin
+            propa.dx := propa.dlsa;
+            prop.aref := a6;
+          end;
+          wscat := True;
         end;
-        wscat := True;
       end;
     end;
+    prop.aref := mymax(prop.aref, 0.0);
   end;
-  prop.aref := mymax(prop.aref, 0.0);
 end;
 
 
@@ -1599,8 +1655,7 @@ begin
   Result := (c1 + c2 / (1.0 + temp1)) * temp2 / (1.0 + temp2);
 end;
 
-function avar(const zzt, zzl, zzc: double; var prop: prop_type;
-  var propv: propv_type): double;
+function avar(var AProfile: TProfileData; const zzt, zzl, zzc: double): double;
 const
   bv1: array[0..6] of double = (-9.67, -0.62, 1.26, -9.21, -0.62, -0.39, 3.15);
   bv2: array[0..6] of double = (12.7, 9.19, 15.5, 9.05, 9.19, 2.86, 857.9);
@@ -1635,269 +1690,279 @@ const
   bfp2: array[0..6] of double = (0.0, 0.31, 0.0, 0.19, 0.31, 0.0, 0.0);
   bfp3: array[0..6] of double = (0.0, 2.00, 0.0, 1.79, 2.00, 0.0, 0.0);
 var
-  kdv: integer;
-  dexa, de, vmd, vs0, sgl, sgtm, sgtp, sgtd, tgtd, gm, gp, cv1, cv2,
-  yv1, yv2, yv3, csm1, csm2, ysm1, ysm2, ysm3, csp1, csp2, ysp1, ysp2,
-  ysp3, csd1, zd, cfm1, cfm2, cfm3, cfp1, cfp2, cfp3: double;
-  ws, w1: boolean;
   rt, rl, avarv, q, vs, zt, zl, zc: double;
   sgt, yr, temp1, temp2: double;
   temp_klim: integer;
 
 
-  procedure doLvar4();
+  procedure doLvar4(var AProfile: TProfileData);
   begin
-    kdv := propv.mdvar;
-    ws := kdv >= 20;
-
-    if (ws) then
-      kdv := kdv - 20;
-
-    w1 := kdv >= 10;
-
-    if (w1) then
-      kdv := kdv - 10;
-
-    if (kdv < 0) or (kdv > 3) then
+    with AProfile do
     begin
-      kdv := 0;
-      prop.kwx := mymax(prop.kwx, 2);
+      kdv := propv.mdvar;
+      ws := kdv >= 20;
+
+      if (ws) then
+        kdv := kdv - 20;
+
+      w1 := kdv >= 10;
+
+      if (w1) then
+        kdv := kdv - 10;
+
+      if (kdv < 0) or (kdv > 3) then
+      begin
+        kdv := 0;
+        prop.kwx := mymax(prop.kwx, 2);
+      end;
     end;
   end;
 
-  procedure doLvar3();
+  procedure doLvar3(var AProfile: TProfileData);
   begin
-    q := ln(0.133 * prop.wn);
+    with AProfile do
+    begin
+      q := ln(0.133 * prop.wn);
 
-    (* gm=cfm1+cfm2/(pow(cfm3*q,2.0)+1.0); *)
-    (* gp=cfp1+cfp2/(pow(cfp3*q,2.0)+1.0); *)
+      (* gm=cfm1+cfm2/(pow(cfm3*q,2.0)+1.0); *)
+      (* gp=cfp1+cfp2/(pow(cfp3*q,2.0)+1.0); *)
 
-    gm := cfm1 + cfm2 / ((cfm3 * q * cfm3 * q) + 1.0);
-    gp := cfp1 + cfp2 / ((cfp3 * q * cfp3 * q) + 1.0);
+      gm := cfm1 + cfm2 / ((cfm3 * q * cfm3 * q) + 1.0);
+      gp := cfp1 + cfp2 / ((cfp3 * q * cfp3 * q) + 1.0);
+    end;
   end;
 
-  procedure doLvar2();
+  procedure doLvar2(var AProfile: TProfileData);
   begin
-    dexa := sqrt(18e6 * prop.he[0]) + sqrt(18e6 * prop.he[1]) + power(
-      (575.7e12 / prop.wn), THIRD);
+    with AProfile do
+      dexa := sqrt(18e6 * prop.he[0]) + sqrt(18e6 * prop.he[1]) +
+        power((575.7e12 / prop.wn), THIRD);
   end;
 
-  procedure doLvar1;
+  procedure doLvar1(var AProfile: TProfileData);
   begin
-    if (prop.dist < dexa) then
-      de := 130e3 * prop.dist / dexa
-    else
-      de := 130e3 + prop.dist - dexa;
+    with AProfile do
+    begin
+      if (prop.dist < dexa) then
+        de := 130e3 * prop.dist / dexa
+      else
+        de := 130e3 + prop.dist - dexa;
+    end;
   end;
 
 begin
   rt := 7.8;
   rl := 24.0;
-  temp_klim := propv.klim - 1;
-
-  if (propv.lvar > 0) then
+  with AProfile do
   begin
-    case propv.lvar of
-      4:
-      begin
-        doLvar4();
-        doLvar3();
-        doLvar2();
-        doLvar1();
+    temp_klim := propv.klim - 1;
+
+    if (propv.lvar > 0) then
+    begin
+      case propv.lvar of
+        4:
+        begin
+          doLvar4(AProfile);
+          doLvar3(AProfile);
+          doLvar2(AProfile);
+          doLvar1(AProfile);
+        end;
+        3:
+        begin
+          doLvar3(AProfile);
+          doLvar2(AProfile);
+          doLvar1(AProfile);
+        end;
+        2:
+        begin
+          doLvar2(AProfile);
+          doLvar1(AProfile);
+        end;
+        1:
+        begin
+          doLvar1(AProfile);
+        end;
+        else
+        begin
+          if (propv.klim <= 0) or (propv.klim > 7) then
+          begin
+            propv.klim := 5;
+            temp_klim := 4;
+            prop.kwx := mymax(prop.kwx, 2);
+          end;
+
+          cv1 := bv1[temp_klim];
+          cv2 := bv2[temp_klim];
+          yv1 := xv1[temp_klim];
+          yv2 := xv2[temp_klim];
+          yv3 := xv3[temp_klim];
+          csm1 := bsm1[temp_klim];
+          csm2 := bsm2[temp_klim];
+          ysm1 := xsm1[temp_klim];
+          ysm2 := xsm2[temp_klim];
+          ysm3 := xsm3[temp_klim];
+          csp1 := bsp1[temp_klim];
+          csp2 := bsp2[temp_klim];
+          ysp1 := xsp1[temp_klim];
+          ysp2 := xsp2[temp_klim];
+          ysp3 := xsp3[temp_klim];
+          csd1 := bsd1[temp_klim];
+          zd := bzd1[temp_klim];
+          cfm1 := bfm1[temp_klim];
+          cfm2 := bfm2[temp_klim];
+          cfm3 := bfm3[temp_klim];
+          cfp1 := bfp1[temp_klim];
+          cfp2 := bfp2[temp_klim];
+          cfp3 := bfp3[temp_klim];
+        end;
       end;
-      3:
+
+      vmd := curve(cv1, cv2, yv1, yv2, yv3, de);
+      sgtm := curve(csm1, csm2, ysm1, ysm2, ysm3, de) * gm;
+      sgtp := curve(csp1, csp2, ysp1, ysp2, ysp3, de) * gp;
+      sgtd := sgtp * csd1;
+      tgtd := (sgtp - sgtd) * zd;
+
+      if (w1) then
+        sgl := 0.0
+      else
       begin
-        doLvar3();
-        doLvar2();
-        doLvar1();
+        q := (1.0 - 0.8 * exp(-prop.dist / 50e3)) * prop.dh * prop.wn;
+        sgl := 10.0 * q / (q + 13.0);
       end;
-      2:
+
+      if (ws) then
+        vs0 := 0.0
+      else
       begin
-        doLvar2();
-        doLvar1();
+        (* vs0=pow(5.0+3.0*exp(-de/100e3),2.0); *)
+        temp1 := (5.0 + 3.0 * exp(-de / 100e3));
+        vs0 := temp1 * temp1;
+
+      end;
+    end;
+    propv.lvar := 0;
+
+    zt := zzt;
+    zl := zzl;
+    zc := zzc;
+
+    case kdv of
+      0:
+      begin
+        zt := zc;
+        zl := zc;
       end;
       1:
       begin
-        doLvar1();
+        zl := zc;
       end;
       else
       begin
-        if (propv.klim <= 0) or (propv.klim > 7) then
-        begin
-          propv.klim := 5;
-          temp_klim := 4;
-          prop.kwx := mymax(prop.kwx, 2);
-        end;
-
-        cv1 := bv1[temp_klim];
-        cv2 := bv2[temp_klim];
-        yv1 := xv1[temp_klim];
-        yv2 := xv2[temp_klim];
-        yv3 := xv3[temp_klim];
-        csm1 := bsm1[temp_klim];
-        csm2 := bsm2[temp_klim];
-        ysm1 := xsm1[temp_klim];
-        ysm2 := xsm2[temp_klim];
-        ysm3 := xsm3[temp_klim];
-        csp1 := bsp1[temp_klim];
-        csp2 := bsp2[temp_klim];
-        ysp1 := xsp1[temp_klim];
-        ysp2 := xsp2[temp_klim];
-        ysp3 := xsp3[temp_klim];
-        csd1 := bsd1[temp_klim];
-        zd := bzd1[temp_klim];
-        cfm1 := bfm1[temp_klim];
-        cfm2 := bfm2[temp_klim];
-        cfm3 := bfm3[temp_klim];
-        cfp1 := bfp1[temp_klim];
-        cfp2 := bfp2[temp_klim];
-        cfp3 := bfp3[temp_klim];
+        zl := zt;
       end;
     end;
 
-    vmd := curve(cv1, cv2, yv1, yv2, yv3, de);
-    sgtm := curve(csm1, csm2, ysm1, ysm2, ysm3, de) * gm;
-    sgtp := curve(csp1, csp2, ysp1, ysp2, ysp3, de) * gp;
-    sgtd := sgtp * csd1;
-    tgtd := (sgtp - sgtd) * zd;
+    if (abs(zt) > 3.1) or (abs(zl) > 3.1) or (abs(zc) > 3.1) then
+      prop.kwx := mymax(prop.kwx, 1);
 
-    if (w1) then
-      sgl := 0.0
+    if (zt < 0.0) then
+      sgt := sgtm
+
+    else if (zt <= zd) then
+      sgt := sgtp
+    else
+      sgt := sgtd + tgtd / zt;
+
+    (* vs=vs0+pow(sgt*zt,2.0)/(rt+zc*zc)+pow(sgl*zl,2.0)/(rl+zc*zc); *)
+
+    temp1 := sgt * zt;
+    temp2 := sgl * zl;
+
+    vs := vs0 + (temp1 * temp1) / (rt + zc * zc) + (temp2 * temp2) / (rl + zc * zc);
+
+    if (kdv = 0) then
+    begin
+      yr := 0.0;
+      propv.sgc := sqrt(sgt * sgt + sgl * sgl + vs);
+    end
+    else if (kdv = 1) then
+    begin
+      yr := sgt * zt;
+      propv.sgc := sqrt(sgl * sgl + vs);
+    end
+    else if (kdv = 2) then
+    begin
+      yr := sqrt(sgt * sgt + sgl * sgl) * zt;
+      propv.sgc := sqrt(vs);
+    end
     else
     begin
-      q := (1.0 - 0.8 * exp(-prop.dist / 50e3)) * prop.dh * prop.wn;
-      sgl := 10.0 * q / (q + 13.0);
+      yr := sgt * zt + sgl * zl;
+      propv.sgc := sqrt(vs);
     end;
 
-    if (ws) then
-      vs0 := 0.0
-    else
-    begin
-      (* vs0=pow(5.0+3.0*exp(-de/100e3),2.0); *)
-      temp1 := (5.0 + 3.0 * exp(-de / 100e3));
-      vs0 := temp1 * temp1;
+    avarv := prop.aref - vmd - yr - propv.sgc * zc;
 
-    end;
+    if (avarv < 0.0) then
+      avarv := avarv * (29.0 - avarv) / (29.0 - 10.0 * avarv);
 
-    propv.lvar := 0;
+    Result := avarv;
   end;
-
-  zt := zzt;
-  zl := zzl;
-  zc := zzc;
-
-  case kdv of
-    0:
-    begin
-      zt := zc;
-      zl := zc;
-    end;
-    1:
-    begin
-      zl := zc;
-    end;
-    2:
-    begin
-      zl := zt;
-    end;
-  end;
-
-  if (abs(zt) > 3.1) or (abs(zl) > 3.1) or (abs(zc) > 3.1) then
-    prop.kwx := mymax(prop.kwx, 1);
-
-  if (zt < 0.0) then
-    sgt := sgtm
-
-  else if (zt <= zd) then
-    sgt := sgtp
-  else
-    sgt := sgtd + tgtd / zt;
-
-  (* vs=vs0+pow(sgt*zt,2.0)/(rt+zc*zc)+pow(sgl*zl,2.0)/(rl+zc*zc); *)
-
-  temp1 := sgt * zt;
-  temp2 := sgl * zl;
-
-  vs := vs0 + (temp1 * temp1) / (rt + zc * zc) + (temp2 * temp2) / (rl + zc * zc);
-
-  if (kdv = 0) then
-  begin
-    yr := 0.0;
-    propv.sgc := sqrt(sgt * sgt + sgl * sgl + vs);
-  end
-  else if (kdv = 1) then
-  begin
-    yr := sgt * zt;
-    propv.sgc := sqrt(sgl * sgl + vs);
-  end
-  else if (kdv = 2) then
-  begin
-    yr := sqrt(sgt * sgt + sgl * sgl) * zt;
-    propv.sgc := sqrt(vs);
-  end
-  else
-  begin
-    yr := sgt * zt + sgl * zl;
-    propv.sgc := sqrt(vs);
-  end;
-
-  avarv := prop.aref - vmd - yr - propv.sgc * zc;
-
-  if (avarv < 0.0) then
-    avarv := avarv * (29.0 - avarv) / (29.0 - 10.0 * avarv);
-
-  Result := avarv;
 end;
 
 
-procedure hzns(pfl: array of double; var prop: prop_type);
+procedure hzns(var AProfile: TProfileData; pfl: array of double);
 var
   wq: boolean;
   np: integer;
   xi, za, zb, qc, q, sb, sa: double;
   i: integer;
 begin
-  (* Used only with ITM 1.2.2 *)
-
-  np := trunc(pfl[0]);
-  xi := pfl[1];
-  za := pfl[2] + prop.hg[0];
-  zb := pfl[np + 2] + prop.hg[1];
-  qc := 0.5 * prop.gme;
-  q := qc * prop.dist;
-  prop.the[1] := (zb - za) / prop.dist;
-  prop.the[0] := prop.the[1] - q;
-  prop.the[1] := -prop.the[1] - q;
-  prop.dl[0] := prop.dist;
-  prop.dl[1] := prop.dist;
-
-  if (np >= 2) then
+  with AProfile do
   begin
-    sa := 0.0;
-    sb := prop.dist;
-    wq := True;
+    (* Used only with ITM 1.2.2 *)
 
-    for i := 1 to np - 1 do
+    np := trunc(pfl[0]);
+    xi := pfl[1];
+    za := pfl[2] + prop.hg[0];
+    zb := pfl[np + 2] + prop.hg[1];
+    qc := 0.5 * prop.gme;
+    q := qc * prop.dist;
+    prop.the[1] := (zb - za) / prop.dist;
+    prop.the[0] := prop.the[1] - q;
+    prop.the[1] := -prop.the[1] - q;
+    prop.dl[0] := prop.dist;
+    prop.dl[1] := prop.dist;
+
+    if (np >= 2) then
     begin
-      sa += xi;
-      sb -= xi;
-      q := pfl[i + 2] - (qc * sa + prop.the[0]) * sa - za;
+      sa := 0.0;
+      sb := prop.dist;
+      wq := True;
 
-      if (q > 0.0) then
+      for i := 1 to np - 1 do
       begin
-        prop.the[0] := prop.the[0] + q / sa;
-        prop.dl[0] := sa;
-        wq := False;
-      end;
-
-      if (not wq) then
-      begin
-        q := pfl[i + 2] - (qc * sb + prop.the[1]) * sb - zb;
+        sa += xi;
+        sb -= xi;
+        q := pfl[i + 2] - (qc * sa + prop.the[0]) * sa - za;
 
         if (q > 0.0) then
         begin
-          prop.the[1] := prop.the[1] + q / sb;
-          prop.dl[1] := sb;
+          prop.the[0] := prop.the[0] + q / sa;
+          prop.dl[0] := sa;
+          wq := False;
+        end;
+
+        if (not wq) then
+        begin
+          q := pfl[i + 2] - (qc * sb + prop.the[1]) * sb - zb;
+
+          if (q > 0.0) then
+          begin
+            prop.the[1] := prop.the[1] + q / sb;
+            prop.dl[1] := sb;
+          end;
         end;
       end;
     end;
@@ -1905,95 +1970,98 @@ begin
 end;
 
 
-procedure hzns2(pfl: array of double; var prop: prop_type);
+procedure hzns2(var AProfile: TProfileData; pfl: array of double);
 var
   wq: boolean;
   np, rp, i, j: integer;
   xi, za, zb, qc, q, sb, sa, dr, dshh: double;
 begin
-
-  np := trunc(pfl[0]);
-  xi := pfl[1];
-  za := pfl[2] + prop.hg[0];
-  zb := pfl[np + 2] + prop.hg[1];
-  prop.tiw := xi;
-  prop.ght := za;
-  prop.ghr := zb;
-  qc := 0.5 * prop.gme;
-  q := qc * prop.dist;
-  prop.the[1] := arctan((zb - za) / prop.dist);
-  prop.the[0] := (prop.the[1]) - q;
-  prop.the[1] := -prop.the[1] - q;
-  prop.dl[0] := prop.dist;
-  prop.dl[1] := prop.dist;
-  prop.hht := 0.0;
-  prop.hhr := 0.0;
-  prop.los := 1;
-
-  if (np >= 2) then
+  with AProfile do
   begin
-    sa := 0.0;
-    sb := prop.dist;
-    wq := True;
+    np := trunc(pfl[0]);
+    xi := pfl[1];
+    za := pfl[2] + prop.hg[0];
+    zb := pfl[np + 2] + prop.hg[1];
+    prop.tiw := xi;
+    prop.ght := za;
+    prop.ghr := zb;
+    qc := 0.5 * prop.gme;
+    q := qc * prop.dist;
+    prop.the[1] := arctan((zb - za) / prop.dist);
+    prop.the[0] := (prop.the[1]) - q;
+    prop.the[1] := -prop.the[1] - q;
+    prop.dl[0] := prop.dist;
+    prop.dl[1] := prop.dist;
+    prop.hht := 0.0;
+    prop.hhr := 0.0;
+    prop.los := 1;
 
-    for j := 1 to np - 1 do
+    if (np >= 2) then
     begin
-      sa := sa + xi;
-      q := pfl[j + 2] - (qc * sa + prop.the[0]) * sa - za;
+      sa := 0.0;
+      sb := prop.dist;
+      wq := True;
 
-      if (q > 0.0) then
+      for j := 1 to np - 1 do
       begin
-        prop.los := 0;
-        prop.the[0] := prop.the[0] + q / sa;
-        prop.dl[0] := sa;
-        prop.the[0] := mymin(prop.the[0], 1.569);
-        prop.hht := pfl[j + 2];
-        wq := False;
-      end;
-    end;
+        sa := sa + xi;
+        q := pfl[j + 2] - (qc * sa + prop.the[0]) * sa - za;
 
-    if (not wq) then
-    begin
-      for i := 1 to np - 1 do
-      begin
-        sb := sb - xi;
-        q := pfl[np + 2 - i] - (qc * (prop.dist - sb) + prop.the[1]) *
-          (prop.dist - sb) - zb;
         if (q > 0.0) then
         begin
-          prop.the[1] := prop.the[1] + q / (prop.dist - sb);
-          prop.the[1] := mymin(prop.the[1], 1.57);
-          prop.the[1] := mymax(prop.the[1], -1.568);
-          prop.hhr := pfl[np + 2 - i];
-          prop.dl[1] := mymax(0.0, prop.dist - sb);
+          prop.los := 0;
+          prop.the[0] := prop.the[0] + q / sa;
+          prop.dl[0] := sa;
+          prop.the[0] := mymin(prop.the[0], 1.569);
+          prop.hht := pfl[j + 2];
+          wq := False;
         end;
       end;
-      prop.the[0] := arctan((prop.hht - za) / prop.dl[0]) - 0.5 * prop.gme * prop.dl[0];
-      prop.the[1] :=
-        arctan((prop.hhr - zb) / prop.dl[1]) - 0.5 * prop.gme * prop.dl[1];
+
+      if (not wq) then
+      begin
+        for i := 1 to np - 1 do
+        begin
+          sb := sb - xi;
+          q := pfl[np + 2 - i] - (qc * (prop.dist - sb) + prop.the[1]) *
+            (prop.dist - sb) - zb;
+          if (q > 0.0) then
+          begin
+            prop.the[1] := prop.the[1] + q / (prop.dist - sb);
+            prop.the[1] := mymin(prop.the[1], 1.57);
+            prop.the[1] := mymax(prop.the[1], -1.568);
+            prop.hhr := pfl[np + 2 - i];
+            prop.dl[1] := mymax(0.0, prop.dist - sb);
+          end;
+        end;
+        prop.the[0] := arctan((prop.hht - za) / prop.dl[0]) - 0.5 *
+          prop.gme * prop.dl[0];
+        prop.the[1] :=
+          arctan((prop.hhr - zb) / prop.dl[1]) - 0.5 * prop.gme * prop.dl[1];
+      end;
     end;
-  end;
 
-  if ((prop.dl[1]) < (prop.dist)) then
-  begin
-    dshh := prop.dist - prop.dl[0] - prop.dl[1];
-
-    if (trunc(dshh) = 0) then (* one obstacle *)
+    if ((prop.dl[1]) < (prop.dist)) then
     begin
-      dr := prop.dl[1] / (1 + zb / prop.hht);
+      dshh := prop.dist - prop.dl[0] - prop.dl[1];
+
+      if (trunc(dshh) = 0) then (* one obstacle *)
+      begin
+        dr := prop.dl[1] / (1 + zb / prop.hht);
+      end
+      else  (* two obstacles *)
+      begin
+        dr := prop.dl[1] / (1 + zb / prop.hhr);
+      end;
     end
-    else  (* two obstacles *)
+    else    (* line of sight  *)
     begin
-      dr := prop.dl[1] / (1 + zb / prop.hhr);
+      dr := (prop.dist) / (1 + zb / za);
     end;
-  end
-  else    (* line of sight  *)
-  begin
-    dr := (prop.dist) / (1 + zb / za);
+    rp := 2 + trunc(floor(0.5 + dr / xi));
+    prop.rpl := rp;
+    prop.rph := pfl[rp];
   end;
-  rp := 2 + trunc(floor(0.5 + dr / xi));
-  prop.rpl := rp;
-  prop.rph := pfl[rp];
 end;
 
 
@@ -2300,8 +2368,8 @@ begin
 end;
 
 
-procedure qlrpfl(const pfl: array of double; const klimx, mdvarx: integer;
-  var prop: prop_type; var propa: propa_type; var propv: propv_type);
+procedure qlrpfl(var AProfile: TProfileData; const pfl: array of double;
+  const klimx, mdvarx: integer);
 var
   np, j: integer;
   xl: array[0..1] of double;
@@ -2310,190 +2378,197 @@ begin
   za := 0;
   zb := 0;
   q := 0;
-  prop.dist := pfl[0] * pfl[1];
-  np := trunc(pfl[0]);
-  hzns(pfl, prop);
-
-  for j := 0 to 1 do
-    xl[j] := mymin(15.0 * prop.hg[j], 0.1 * prop.dl[j]);
-
-  xl[1] := prop.dist - xl[1];
-  prop.dh := d1thx(pfl, xl[0], xl[1]);
-
-  if (prop.dl[0] + prop.dl[1] > 1.5 * prop.dist) then
+  with AProfile do
   begin
-    z1sq1(pfl, xl[0], xl[1], za, zb);
-    prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
-    prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
+    prop.dist := pfl[0] * pfl[1];
+    np := trunc(pfl[0]);
+    hzns(AProfile, pfl);
 
     for j := 0 to 1 do
-      prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
-        -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+      xl[j] := mymin(15.0 * prop.hg[j], 0.1 * prop.dl[j]);
 
-    q := prop.dl[0] + prop.dl[1];
+    xl[1] := prop.dist - xl[1];
+    prop.dh := d1thx(pfl, xl[0], xl[1]);
 
-    if (q <= prop.dist) then
-      (* if there is a rounded horizon, or two obstructions, in the path *)
+    if (prop.dl[0] + prop.dl[1] > 1.5 * prop.dist) then
     begin
-      (* q=pow(prop.dist/q,2.0); *)
-      temp := prop.dist / q;
-      q := temp * temp;
+      z1sq1(pfl, xl[0], xl[1], za, zb);
+      prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
+      prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
 
       for j := 0 to 1 do
-      begin
-        prop.he[j] := prop.he[j] * q;
-        (* tx effective height set to be path dist/distance between obstacles *)
         prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
           -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+
+      q := prop.dl[0] + prop.dl[1];
+
+      if (q <= prop.dist) then
+        (* if there is a rounded horizon, or two obstructions, in the path *)
+      begin
+        (* q=pow(prop.dist/q,2.0); *)
+        temp := prop.dist / q;
+        q := temp * temp;
+
+        for j := 0 to 1 do
+        begin
+          prop.he[j] := prop.he[j] * q;
+          (* tx effective height set to be path dist/distance between obstacles *)
+          prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
+            -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+        end;
       end;
-    end;
 
-    for j := 0 to 1 do
-      (* original empirical adjustment?  uses delta-h to adjust grazing angles *)
+      for j := 0 to 1 do
+        (* original empirical adjustment?  uses delta-h to adjust grazing angles *)
+      begin
+        q := sqrt(2.0 * prop.he[j] / prop.gme);
+        prop.the[j] := (0.65 * prop.dh * (q / prop.dl[j] - 1.0) - 2.0 * prop.he[j]) / q;
+      end;
+    end
+    else
     begin
-      q := sqrt(2.0 * prop.he[j] / prop.gme);
-      prop.the[j] := (0.65 * prop.dh * (q / prop.dl[j] - 1.0) - 2.0 * prop.he[j]) / q;
+      z1sq1(pfl, xl[0], 0.9 * prop.dl[0], za, q);
+      z1sq1(pfl, prop.dist - 0.9 * prop.dl[1], xl[1], q, zb);
+      prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
+      prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
     end;
-  end
-  else
-  begin
-    z1sq1(pfl, xl[0], 0.9 * prop.dl[0], za, q);
-    z1sq1(pfl, prop.dist - 0.9 * prop.dl[1], xl[1], q, zb);
-    prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
-    prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
-  end;
 
-  prop.mdp := -1;
-  propv.lvar := mymax(propv.lvar, 3);
+    prop.mdp := -1;
+    propv.lvar := mymax(propv.lvar, 3);
 
-  if (mdvarx >= 0) then
-  begin
-    propv.mdvar := mdvarx;
-    propv.lvar := mymax(propv.lvar, 4);
-  end;
+    if (mdvarx >= 0) then
+    begin
+      propv.mdvar := mdvarx;
+      propv.lvar := mymax(propv.lvar, 4);
+    end;
 
-  if (klimx > 0) then
-  begin
-    propv.klim := klimx;
-    propv.lvar := 5;
+    if (klimx > 0) then
+    begin
+      propv.klim := klimx;
+      propv.lvar := 5;
+    end;
+    lrprop(AProfile, 0.0);
   end;
-  lrprop(0.0, prop, propa);
 end;
 
-procedure qlrpfl2(const pfl: array of double; const klimx, mdvarx: integer;
-  var prop: prop_type; var propa: propa_type; var propv: propv_type);
+procedure qlrpfl2(var AProfile: TProfileData; const pfl: array of double;
+  const klimx, mdvarx: integer);
 var
   np, j: integer;
   xl: array[0..1] of double;
   dlb, q, za, zb, temp, rad, rae1, rae2: double;
 begin
-  rae1 := 0;
-  rae2 := 0;
-  zb := 0;
-  q := 0;
-  za := 0;
-
-  prop.dist := pfl[0] * pfl[1];
-  np := trunc(pfl[0]);
-  hzns2(pfl, prop);
-  dlb := prop.dl[0] + prop.dl[1];
-  prop.rch[0] := prop.hg[0] + pfl[2];
-  prop.rch[1] := prop.hg[1] + pfl[np + 2];
-
-  for j := 0 to 1 do
-    xl[j] := mymin(15.0 * prop.hg[j], 0.1 * prop.dl[j]);
-
-  xl[1] := prop.dist - xl[1];
-  prop.dh := d1thx2(pfl, xl[0], xl[1]);
-
-  if ((np < 1) or (pfl[1] > 150.0)) then
+  with AProfile do
   begin
-    (* for TRANSHORIZON; diffraction over a mutual horizon, or for one or more obstructions *)
-    if (dlb < 1.5 * prop.dist) then
+    rae1 := 0;
+    rae2 := 0;
+    zb := 0;
+    q := 0;
+    za := 0;
+
+    prop.dist := pfl[0] * pfl[1];
+    np := trunc(pfl[0]);
+    hzns2(AProfile, pfl);
+    dlb := prop.dl[0] + prop.dl[1];
+    prop.rch[0] := prop.hg[0] + pfl[2];
+    prop.rch[1] := prop.hg[1] + pfl[np + 2];
+
+    for j := 0 to 1 do
+      xl[j] := mymin(15.0 * prop.hg[j], 0.1 * prop.dl[j]);
+
+    xl[1] := prop.dist - xl[1];
+    prop.dh := d1thx2(pfl, xl[0], xl[1]);
+
+    if ((np < 1) or (pfl[1] > 150.0)) then
     begin
-      z1sq2(pfl, xl[0], 0.9 * prop.dl[0], za, q);
-      z1sq2(pfl, prop.dist - 0.9 * prop.dl[1], xl[1], q, zb);
-      prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
-      prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
+      (* for TRANSHORIZON; diffraction over a mutual horizon, or for one or more obstructions *)
+      if (dlb < 1.5 * prop.dist) then
+      begin
+        z1sq2(pfl, xl[0], 0.9 * prop.dl[0], za, q);
+        z1sq2(pfl, prop.dist - 0.9 * prop.dl[1], xl[1], q, zb);
+        prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
+        prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
+      end
+      (* for a Line-of-Sight path *)
+      else
+      begin
+        z1sq2(pfl, xl[0], xl[1], za, zb);
+        prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
+        prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
+
+        for j := 0 to 1 do
+          prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
+            -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+
+        (* for one or more obstructions only NOTE buried as in ITM FORTRAN and DLL, not functional  *)
+        if ((prop.dl[0] + prop.dl[1]) <= prop.dist) then
+        begin
+          (* q=pow(prop.dist/(dl[0]+dl[1])),2.0); *)
+          temp := prop.dist / (prop.dl[0] + prop.dl[1]);
+          q := temp * temp;
+        end;
+
+        for j := 0 to 1 do
+        begin
+          prop.he[j] := prop.he[j] * q;
+          prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
+            -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+        end;
+
+        (* this sets (or resets) prop.the, and is not in The Guide FORTRAN QLRPFL *)
+        for j := 0 to 1 do
+        begin
+          q := sqrt(2.0 * prop.he[j] / prop.gme);
+          prop.the[j] := (0.65 * prop.dh * (q / prop.dl[j] - 1.0) -
+            2.0 * prop.he[j]) / q;
+        end;
+      end;
     end
-    (* for a Line-of-Sight path *)
-    else
+    else    (* for ITWOM ,computes he for tx, rcvr, and the receiver approach angles for use in saalos *)
     begin
-      z1sq2(pfl, xl[0], xl[1], za, zb);
-      prop.he[0] := prop.hg[0] + FORTRAN_DIM(pfl[2], za);
-      prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
+      prop.he[0] := prop.hg[0] + (pfl[2]);
+      prop.he[1] := prop.hg[1] + (pfl[np + 2]);
 
-      for j := 0 to 1 do
-        prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
-          -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+      rad := (prop.dist - 500.0);
 
-      (* for one or more obstructions only NOTE buried as in ITM FORTRAN and DLL, not functional  *)
-      if ((prop.dl[0] + prop.dl[1]) <= prop.dist) then
+      if (prop.dist > 550.0) then
       begin
-        (* q=pow(prop.dist/(dl[0]+dl[1])),2.0); *)
-        temp := prop.dist / (prop.dl[0] + prop.dl[1]);
-        q := temp * temp;
+        z1sq2(pfl, rad, prop.dist, rae1, rae2);
+      end
+      else
+      begin
+        rae1 := 0.0;
+        rae2 := 0.0;
       end;
 
-      for j := 0 to 1 do
+      prop.thera := arctan(abs(rae2 - rae1) / prop.dist);
+
+      if (rae2 < rae1) then
       begin
-        prop.he[j] := prop.he[j] * q;
-        prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
-          -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+        prop.thera := -prop.thera;
       end;
 
-      (* this sets (or resets) prop.the, and is not in The Guide FORTRAN QLRPFL *)
-      for j := 0 to 1 do
-      begin
-        q := sqrt(2.0 * prop.he[j] / prop.gme);
-        prop.the[j] := (0.65 * prop.dh * (q / prop.dl[j] - 1.0) - 2.0 * prop.he[j]) / q;
-      end;
-    end;
-  end
-  else    (* for ITWOM ,computes he for tx, rcvr, and the receiver approach angles for use in saalos *)
-  begin
-    prop.he[0] := prop.hg[0] + (pfl[2]);
-    prop.he[1] := prop.hg[1] + (pfl[np + 2]);
+      prop.thenr := arctan(mymax(0.0, (pfl[np + 2] - pfl[np + 1])) / pfl[1]);
 
-    rad := (prop.dist - 500.0);
-
-    if (prop.dist > 550.0) then
-    begin
-      z1sq2(pfl, rad, prop.dist, rae1, rae2);
-    end
-    else
-    begin
-      rae1 := 0.0;
-      rae2 := 0.0;
     end;
 
-    prop.thera := arctan(abs(rae2 - rae1) / prop.dist);
+    prop.mdp := -1;
+    propv.lvar := mymax(propv.lvar, 3);
 
-    if (rae2 < rae1) then
+    if (mdvarx >= 0) then
     begin
-      prop.thera := -prop.thera;
+      propv.mdvar := mdvarx;
+      propv.lvar := mymax(propv.lvar, 4);
     end;
 
-    prop.thenr := arctan(mymax(0.0, (pfl[np + 2] - pfl[np + 1])) / pfl[1]);
+    if (klimx > 0) then
+    begin
+      propv.klim := klimx;
+      propv.lvar := 5;
+    end;
 
+    lrprop2(AProfile, 0.0);
   end;
-
-  prop.mdp := -1;
-  propv.lvar := mymax(propv.lvar, 3);
-
-  if (mdvarx >= 0) then
-  begin
-    propv.mdvar := mdvarx;
-    propv.lvar := mymax(propv.lvar, 4);
-  end;
-
-  if (klimx > 0) then
-  begin
-    propv.klim := klimx;
-    propv.lvar := 5;
-  end;
-
-  lrprop2(0.0, prop, propa);
 end;
 
 function deg2rad(const d: double): double;
@@ -2540,68 +2615,69 @@ Note that point_to_point has become point_to_point_ITM for use as the old ITM
 
 *****************************************************************************)
 var
-  prop: prop_type;
-  propv: propv_type;
-  propa: propa_type;
   zsys: double;
   zc, zr: double;
   eno, enso, q: double;
   ja, jb, i, np: longint;
   (*  dkm, xkm:double; *)
   fs: double;
+  Profile: TProfileData;
 begin
   zsys := 0;
-  propa.aed := 0;
-  prop.hg[0] := tht_m;
-  prop.hg[1] := rht_m;
-  propv.klim := radio_climate;
-  prop.kwx := 0;
-  propv.lvar := 5;
-  prop.mdp := -1;
-  zc := qerfi(conf);
-  zr := qerfi(rel);
-  np := trunc(elev[0]);
-  (* dkm:=(elev[1]*elev[0])/1000.0; *)
-  (* xkm:=elev[1]/1000.0; *)
-  eno := eno_ns_surfref;
-  enso := 0.0;
-  q := enso;
-
-  if (q <= 0.0) then
+  fillchar({%H-}Profile, sizeof(TProfileData), 0);
+  with Profile do
   begin
-    ja := trunc(3.0 + 0.1 * elev[0]);  (* added (long) to correct *)
-    jb := np - ja + 6;
+    prop.hg[0] := tht_m;
+    prop.hg[1] := rht_m;
+    propv.klim := radio_climate;
+    prop.kwx := 0;
+    propv.lvar := 5;
+    prop.mdp := -1;
+    zc := qerfi(conf);
+    zr := qerfi(rel);
+    np := trunc(elev[0]);
+    (* dkm:=(elev[1]*elev[0])/1000.0; *)
+    (* xkm:=elev[1]/1000.0; *)
+    eno := eno_ns_surfref;
+    enso := 0.0;
+    q := enso;
 
-    for i := ja - 1 to jb - 1 do
-      zsys := zsys + elev[i];
+    if (q <= 0.0) then
+    begin
+      ja := trunc(3.0 + 0.1 * elev[0]);  (* added (long) to correct *)
+      jb := np - ja + 6;
 
-    zsys := zsys / (jb - ja + 1);
-    q := eno;
+      for i := ja - 1 to jb - 1 do
+        zsys := zsys + elev[i];
+
+      zsys := zsys / (jb - ja + 1);
+      q := eno;
+    end;
+    propv.mdvar := 12;
+    qlrps(Profile, frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity);
+    qlrpfl(Profile, elev, propv.klim, propv.mdvar);
+
+    fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
+    q := prop.dist - propa.dla;
+
+    if trunc(q) < 0.0 then
+      strmode := 'Line-Of-Sight Mode'
+    else
+    begin
+      if trunc(q) = 0.0 then
+        strmode := 'Single Horizon'
+      else if trunc(q) > 0.0 then
+        strmode := 'Double Horizon';
+
+      if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
+        strmode := strmode + ', Diffraction Dominant'
+      else if (prop.dist > propa.dx) then
+        strmode := strmode + ', Troposcatter Dominant';
+    end;
+
+    dbloss := avar(Profile, zr, 0.0, zc) + fs;
+    errnum := prop.kwx;
   end;
-
-  propv.mdvar := 12;
-  qlrps(frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity, prop);
-  qlrpfl(elev, propv.klim, propv.mdvar, prop, propa, propv);
-  fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
-  q := prop.dist - propa.dla;
-
-  if trunc(q) < 0.0 then
-    strmode := 'Line-Of-Sight Mode'
-  else
-  begin
-    if trunc(q) = 0.0 then
-      strmode := 'Single Horizon'
-    else if trunc(q) > 0.0 then
-      strmode := 'Double Horizon';
-
-    if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
-      strmode := strmode + ', Diffraction Dominant'
-    else if (prop.dist > propa.dx) then
-      strmode := strmode + ', Troposcatter Dominant';
-  end;
-
-  dbloss := avar(zr, 0.0, zc, prop, propv) + fs;
-  errnum := prop.kwx;
 end;
 
 procedure point_to_point(const elev: array of double;
@@ -2663,9 +2739,6 @@ procedure point_to_point(const elev: array of double;
 
 *****************************************************************************)
 var
-  prop: prop_type;
-  propv: propv_type;
-  propa: propa_type;
   zsys: double;
 
   zc, zr: double;
@@ -2675,82 +2748,86 @@ var
   tpd, fs: double;
   mode_var: integer;
 
+  Profile: TProfileData;
+
 begin
-  propa.aed := 0;
-  prop.aref := 0;
   zsys := 0;
-  fillchar(prop, sizeof(prop),0);
-  prop.hg[0] := tht_m;
-  prop.hg[1] := rht_m;
-  propv.klim := radio_climate;
-  prop.kwx := 0;
-  propv.lvar := 5;
-  prop.mdp := -1;
-  prop.ptx := pol;
-  prop.thera := 0.0;
-  prop.thenr := 0.0;
-  zc := qerfi(conf);
-  zr := qerfi(rel);
-  np := trunc(elev[0]);
-  (* dkm:=(elev[1]*elev[0])/1000.0; *)
-  (* xkm:=elev[1]/1000.0; *)
-  eno := eno_ns_surfref;
-  enso := 0.0;
-  q := enso;
+  fillchar({%H-}Profile, sizeof(TProfileData), 0);
 
-  (* PRESET VALUES for Basic Version w/o additional inputs active *)
+  with Profile do
+  begin
+    prop.hg[0] := tht_m;
+    prop.hg[1] := rht_m;
+    propv.klim := radio_climate;
+    prop.kwx := 0;
+    propv.lvar := 5;
+    prop.mdp := -1;
+    prop.ptx := pol;
+    prop.thera := 0.0;
+    prop.thenr := 0.0;
+    zc := qerfi(conf);
+    zr := qerfi(rel);
+    np := trunc(elev[0]);
+    (* dkm:=(elev[1]*elev[0])/1000.0; *)
+    (* xkm:=elev[1]/1000.0; *)
+    eno := eno_ns_surfref;
+    enso := 0.0;
+    q := enso;
 
-  prop.encc := 1000.00;    (*  double enc_ncc_clcref preset  *)
-  prop.cch := 22.5;       (* double clutter_height preset to ILLR calibration.;
+    (* PRESET VALUES for Basic Version w/o additional inputs active *)
+
+    prop.encc := 1000.00;    (*  double enc_ncc_clcref preset  *)
+    prop.cch := 22.5;       (* double clutter_height preset to ILLR calibration.;
              use 25.3 for ITU-P1546-2 calibration *)
-  prop.cd := 1.00;                 (* double clutter_density preset *)
-  mode_var := 1;     (* int mode_var set to 1 for FCC compatibility;
+    prop.cd := 1.00;                 (* double clutter_density preset *)
+    mode_var := 1;     (* int mode_var set to 1 for FCC compatibility;
              normally, SPLAT presets this to 12 *)
-  prop.dhd := 0.0;      (* delta_h_diff preset *)
+    prop.dhd := 0.0;      (* delta_h_diff preset *)
 
-  if (q <= 0.0) then
-  begin
-    ja := trunc(3.0 + 0.1 * elev[0]);
-    jb := np - ja + 6;
-
-    for i := ja - 1 to jb - 1 do
-      zsys := zsys + elev[i];
-
-    zsys := zsys / (jb - ja + 1);
-    q := eno;
-  end;
-
-  propv.mdvar := mode_var;
-  qlrps(frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity, prop);
-  qlrpfl2(elev, propv.klim, propv.mdvar, prop, propa, propv);
-  tpd := sqrt((prop.he[0] - prop.he[1]) * (prop.he[0] - prop.he[1]) +
-    (prop.dist) * (prop.dist));
-  fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(tpd / 1000.0);
-  q := prop.dist - propa.dla;
-
-  if (int(q) < 0.0) then
-    strmode := 'L-o-S'
-  else
-  begin
-    if (trunc(q) = 0.0) then
-      strmode := '1_Hrzn'
-    else if (trunc(q) > 0.0) then
-      strmode := '2_Hrzn';
-
-    if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
+    if (q <= 0.0) then
     begin
+      ja := trunc(3.0 + 0.1 * elev[0]);
+      jb := np - ja + 6;
 
-      if (trunc(prop.dl[1]) = 0.0) then
-        strmode := strmode + '_Peak'
-      else
-        strmode := strmode + '_Diff';
-    end
-    else if (prop.dist > propa.dx) then
-      strmode := strmode + '_Tropo';
+      for i := ja - 1 to jb - 1 do
+        zsys := zsys + elev[i];
+
+      zsys := zsys / (jb - ja + 1);
+      q := eno;
+    end;
+
+    propv.mdvar := mode_var;
+    qlrps(Profile, frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity);
+    qlrpfl2(Profile, elev, propv.klim, propv.mdvar);
+    tpd := sqrt((prop.he[0] - prop.he[1]) * (prop.he[0] - prop.he[1]) +
+      (prop.dist) * (prop.dist));
+    fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(tpd / 1000.0);
+    q := prop.dist - propa.dla;
+
+    if (int(q) < 0.0) then
+      strmode := 'L-o-S'
+    else
+    begin
+      if (trunc(q) = 0.0) then
+        strmode := '1_Hrzn'
+      else if (trunc(q) > 0.0) then
+        strmode := '2_Hrzn';
+
+      if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
+      begin
+
+        if (trunc(prop.dl[1]) = 0.0) then
+          strmode := strmode + '_Peak'
+        else
+          strmode := strmode + '_Diff';
+      end
+      else if (prop.dist > propa.dx) then
+        strmode := strmode + '_Tropo';
+    end;
+
+    dbloss := avar(Profile, zr, 0.0, zc) + fs;
+    errnum := prop.kwx;
   end;
-
-  dbloss := avar(zr, 0.0, zc, prop, propv) + fs;
-  errnum := prop.kwx;
 end;
 
 
@@ -2784,81 +2861,82 @@ procedure point_to_pointMDH_two(const elev: array of double;
                             Results are probably invalid.
 *************************************************************************************************)
 var
-  prop: prop_type;
-  propv: propv_type;
-  propa: propa_type;
   zsys: double;
   ztime, zloc, zconf: double;
   eno, enso, q: double;
   ja, jb, i, np: longint;
   (*  dkm, xkm: double; *)
   fs: double;
+  Profile: TProfileData;
 begin
-  propa.aed := 0;
-  zsys := 0;
-  propmode := -1;  // mode is undefined
-  prop.hg[0] := tht_m;
-  prop.hg[1] := rht_m;
-  propv.klim := radio_climate;
-  prop.encc := enc_ncc_clcref;
-  prop.cch := clutter_height;
-  prop.cd := clutter_density;
-  prop.dhd := delta_h_diff;
-  prop.kwx := 0;
-  propv.lvar := 5;
-  prop.mdp := -1;
-  prop.ptx := pol;
-  prop.thera := 0.0;
-  prop.thenr := 0.0;
-  ztime := qerfi(timepct);
-  zloc := qerfi(locpct);
-  zconf := qerfi(confpct);
-  np := trunc(elev[0]);
-  (* dkm = (elev[1] * elev[0]) / 1000.0; *)
-  (* xkm = elev[1] / 1000.0; *)
-  eno := eno_ns_surfref;
-  enso := 0.0;
-  q := enso;
-
-  (* PRESET VALUES for Basic Version w/o additional inputs active *)
-
-  prop.encc := 1000.00;    (*  double enc_ncc_clcref  *)
-  prop.cch := 22.5;       (* double clutter_height *)
-  prop.cd := 1.00;              (* double clutter_density *)
-  //mode_var := 1;     (* int mode_var set for FCC ILLR *)
-
-  if (q <= 0.0) then
+  fillchar({%H-}Profile, sizeof(TProfileData), 0);
+  with Profile do
   begin
-    ja := trunc(3.0 + 0.1 * elev[0]); (* to match addition of (long) *)
-    jb := np - ja + 6;
-    for i := ja - 1 to jb - 1 do
-      zsys := zsys + elev[i];
-    zsys := zsys / (jb - ja + 1);
-    q := eno;
-  end;
-  propv.mdvar := 12;
-  qlrps(frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity, prop);
-  qlrpfl2(elev, propv.klim, propv.mdvar, prop, propa, propv);
-  fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
+    zsys := 0;
+    propmode := -1;  // mode is undefined
+    prop.hg[0] := tht_m;
+    prop.hg[1] := rht_m;
+    propv.klim := radio_climate;
+    prop.encc := enc_ncc_clcref;
+    prop.cch := clutter_height;
+    prop.cd := clutter_density;
+    prop.dhd := delta_h_diff;
+    prop.kwx := 0;
+    propv.lvar := 5;
+    prop.mdp := -1;
+    prop.ptx := pol;
+    prop.thera := 0.0;
+    prop.thenr := 0.0;
+    ztime := qerfi(timepct);
+    zloc := qerfi(locpct);
+    zconf := qerfi(confpct);
+    np := trunc(elev[0]);
+    (* dkm = (elev[1] * elev[0]) / 1000.0; *)
+    (* xkm = elev[1] / 1000.0; *)
+    eno := eno_ns_surfref;
+    enso := 0.0;
+    q := enso;
 
-  deltaH := prop.dh;
-  q := prop.dist - propa.dla;
-  if (trunc(q) < 0.0) then
-    propmode := 0  // L-of-S
-  else
-  begin
-    if (trunc(q) = 0.0) then
-      propmode := 4  // 1-Hrzn
-    else if (trunc(q) > 0.0) then
-      propmode := 8;  // 2-Hrzn
-    if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
-      propmode := propmode + 1 // Diff
-    else if (prop.dist > propa.dx) then
-      propmode := propmode + 2; // Tropo
+    (* PRESET VALUES for Basic Version w/o additional inputs active *)
+
+    prop.encc := 1000.00;    (*  double enc_ncc_clcref  *)
+    prop.cch := 22.5;       (* double clutter_height *)
+    prop.cd := 1.00;              (* double clutter_density *)
+    //mode_var := 1;     (* int mode_var set for FCC ILLR *)
+
+    if (q <= 0.0) then
+    begin
+      ja := trunc(3.0 + 0.1 * elev[0]); (* to match addition of (long) *)
+      jb := np - ja + 6;
+      for i := ja - 1 to jb - 1 do
+        zsys := zsys + elev[i];
+      zsys := zsys / (jb - ja + 1);
+      q := eno;
+    end;
+    propv.mdvar := 12;
+    qlrps(Profile, frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity);
+    qlrpfl2(Profile, elev, propv.klim, propv.mdvar);
+    fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
+
+    deltaH := prop.dh;
+    q := prop.dist - propa.dla;
+    if (trunc(q) < 0.0) then
+      propmode := 0  // L-of-S
+    else
+    begin
+      if (trunc(q) = 0.0) then
+        propmode := 4  // 1-Hrzn
+      else if (trunc(q) > 0.0) then
+        propmode := 8;  // 2-Hrzn
+      if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
+        propmode := propmode + 1 // Diff
+      else if (prop.dist > propa.dx) then
+        propmode := propmode + 2; // Tropo
+    end;
+    dbloss := avar(Profile, ztime, zloc, zconf) + fs;
+    //avar(time,location,confidence)
+    errnum := prop.kwx;
   end;
-  dbloss := avar(ztime, zloc, zconf, prop, propv) + fs;
-  //avar(time,location,confidence)
-  errnum := prop.kwx;
 end;
 
 procedure point_to_pointDH(const elev: array of double;
@@ -2884,9 +2962,8 @@ procedure point_to_pointDH(const elev: array of double;
 *************************************************************************************************)
 var
   strmode: string;
-  prop: prop_type;
-  propv: propv_type;
-  propa: propa_type;
+  Profile: TProfileData;
+
   zsys: double;
   zc, zr: double;
   eno, enso, q: double;
@@ -2895,66 +2972,70 @@ var
   fs: double;
 
 begin
-  zsys := 0;
-  propa.aed := 0;
-  prop.hg[0] := tht_m;
-  prop.hg[1] := rht_m;
-  propv.klim := radio_climate;
-  prop.encc := enc_ncc_clcref;
-  prop.cch := clutter_height;
-  prop.cd := clutter_density;
-  prop.dhd := delta_h_diff;
-  prop.kwx := 0;
-  propv.lvar := 5;
-  prop.mdp := -1;
-  prop.ptx := pol;
-  prop.thera := 0.0;
-  prop.thenr := 0.0;
-  zc := qerfi(conf);
-  zr := qerfi(rel);
-  np := trunc(elev[0]);
-  (* dkm := (elev[1] * elev[0]) / 1000.0; *)
-  (* xkm := elev[1] / 1000.0; *)
-  eno := eno_ns_surfref;
-  enso := 0.0;
-  q := enso;
-
-  (* PRESET VALUES for Basic Version w/o additional inputs active *)
-
-  prop.encc := 1000.00;    (*  double enc_ncc_clcref  *)
-  prop.cch := 22.5;       (* double clutter_height *)
-  prop.cd := 1.00;              (* double clutter_density *)
-
-  if (q <= 0.0) then
+  fillchar({%H-}Profile, sizeof(TProfileData), 0);
+  with Profile do
   begin
-    ja := trunc(3.0 + 0.1 * elev[0]); (* to match KD2BD addition of (long)  *)
-    jb := np - ja + 6;
-    for i := ja - 1 to jb - 1 do
-      zsys := zsys + elev[i];
-    zsys := zsys / (jb - ja + 1);
-    q := eno;
+    zsys := 0;
+    propa.aed := 0;
+    prop.hg[0] := tht_m;
+    prop.hg[1] := rht_m;
+    propv.klim := radio_climate;
+    prop.encc := enc_ncc_clcref;
+    prop.cch := clutter_height;
+    prop.cd := clutter_density;
+    prop.dhd := delta_h_diff;
+    prop.kwx := 0;
+    propv.lvar := 5;
+    prop.mdp := -1;
+    prop.ptx := pol;
+    prop.thera := 0.0;
+    prop.thenr := 0.0;
+    zc := qerfi(conf);
+    zr := qerfi(rel);
+    np := trunc(elev[0]);
+    (* dkm := (elev[1] * elev[0]) / 1000.0; *)
+    (* xkm := elev[1] / 1000.0; *)
+    eno := eno_ns_surfref;
+    enso := 0.0;
+    q := enso;
+
+    (* PRESET VALUES for Basic Version w/o additional inputs active *)
+
+    prop.encc := 1000.00;    (*  double enc_ncc_clcref  *)
+    prop.cch := 22.5;       (* double clutter_height *)
+    prop.cd := 1.00;              (* double clutter_density *)
+
+    if (q <= 0.0) then
+    begin
+      ja := trunc(3.0 + 0.1 * elev[0]); (* to match KD2BD addition of (long)  *)
+      jb := np - ja + 6;
+      for i := ja - 1 to jb - 1 do
+        zsys := zsys + elev[i];
+      zsys := zsys / (jb - ja + 1);
+      q := eno;
+    end;
+    propv.mdvar := 12;
+    qlrps(Profile, frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity);
+    qlrpfl2(Profile, elev, propv.klim, propv.mdvar);
+    fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
+    deltaH := prop.dh;
+    q := prop.dist - propa.dla;
+    if (trunc(q) < 0.0) then
+      strmode := 'Line-Of-Sight Mode'
+    else
+    begin
+      if (trunc(q) = 0.0) then
+        strmode := 'Single Horizon'
+      else if (trunc(q) > 0.0) then
+        strmode := 'Double Horizon';
+      if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
+        strmode := strmode + ', Diffraction Dominant'
+      else if (prop.dist > propa.dx) then
+        strmode := strmode + ', Troposcatter Dominant';
+    end;
+    dbloss := avar(Profile, zr, 0.0, zc) + fs;      //avar(time,location,confidence)
+    errnum := prop.kwx;
   end;
-  propv.mdvar := 12;
-  qlrps(frq_mhz, zsys, q, pol, eps_dielect, sgm_conductivity, prop);
-  qlrpfl2(elev, propv.klim, propv.mdvar, prop, propa, propv);
-  fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
-  deltaH := prop.dh;
-  q := prop.dist - propa.dla;
-  if (trunc(q) < 0.0) then
-    strmode := 'Line-Of-Sight Mode'
-  else
-  begin
-    if (trunc(q) = 0.0) then
-      strmode := 'Single Horizon'
-    else if (trunc(q) > 0.0) then
-      strmode := 'Double Horizon';
-    if (prop.dist <= propa.dlsa) or (prop.dist <= propa.dx) then
-      strmode := strmode + ', Diffraction Dominant'
-    else if (prop.dist > propa.dx) then
-      strmode := strmode + ', Troposcatter Dominant';
-  end;
-  dbloss := avar(zr, 0.0, zc, prop, propv) + fs;      //avar(time,location,confidence)
-  errnum := prop.kwx;
 end;
 
 
@@ -2969,9 +3050,7 @@ procedure area(const ModVar: longint; const deltaH, tht_m, rht_m, dist_km: doubl
   const radio_climate, pol: integer; const pctTime, pctLoc, pctConf: double;
   out dbloss: double; out errnum: integer);
 var
-  prop: prop_type;
-  propv: propv_type;
-  propa: propa_type;
+  Profile: TProfileData;
   zt, zl, zc, xlb: double;
   fs: double;
   ivar: longint;
@@ -3000,38 +3079,41 @@ begin
   //         Other-  Warning: Some parameters are out of range.
   //                          Results are probably invalid.
   // NOTE: strmode is not used at this time.
-  propa.aed := 0;
-  kst[0] := TSiteCriteria;
-  kst[1] := RSiteCriteria;
-  zt := qerfi(pctTime / 100.0);
-  zl := qerfi(pctLoc / 100.0);
-  zc := qerfi(pctConf / 100.0);
-  eps := eps_dielect;
-  sgm := sgm_conductivity;
-  eno := eno_ns_surfref;
-  prop.dh := deltaH;
-  prop.hg[0] := tht_m;
-  prop.hg[1] := rht_m;
-  propv.klim := radio_climate;
-  prop.encc := enc_ncc_clcref;
-  prop.cch := clutter_height;
-  prop.cd := clutter_density;
-  prop.dhd := delta_h_diff;
-  prop.ens := eno;
-  prop.kwx := 0;
-  ivar := ModVar;
-  ipol := pol;
-  qlrps(frq_mhz, 0.0, eno, ipol, eps, sgm, prop);
-  qlra(kst, propv.klim, ivar, prop, propv);
+  fillchar({%H-}Profile, sizeof(TProfileData), 0);
+  with Profile do
+  begin
+    kst[0] := TSiteCriteria;
+    kst[1] := RSiteCriteria;
+    zt := qerfi(pctTime / 100.0);
+    zl := qerfi(pctLoc / 100.0);
+    zc := qerfi(pctConf / 100.0);
+    eps := eps_dielect;
+    sgm := sgm_conductivity;
+    eno := eno_ns_surfref;
+    prop.dh := deltaH;
+    prop.hg[0] := tht_m;
+    prop.hg[1] := rht_m;
+    propv.klim := radio_climate;
+    prop.encc := enc_ncc_clcref;
+    prop.cch := clutter_height;
+    prop.cd := clutter_density;
+    prop.dhd := delta_h_diff;
+    prop.ens := eno;
+    prop.kwx := 0;
+    ivar := ModVar;
+    ipol := pol;
+    qlrps(Profile, frq_mhz, 0.0, eno, ipol, eps, sgm);
+    qlra(Profile, kst, propv.klim, ivar);
 
-  if (propv.lvar < 1) then
-    propv.lvar := 1;
+    if (propv.lvar < 1) then
+      propv.lvar := 1;
 
-  lrprop2(dist_km * 1000.0, prop, propa);
-  fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
-  xlb := fs + avar(zt, zl, zc, prop, propv);
-  dbloss := xlb;
-  errnum := prop.kwx;
+    lrprop2(Profile, dist_km * 1000.0);
+    fs := 32.45 + 20.0 * log10(frq_mhz) + 20.0 * log10(prop.dist / 1000.0);
+    xlb := fs + avar(Profile, zt, zl, zc);
+    dbloss := xlb;
+    errnum := prop.kwx;
+  end;
 end;
 
 // other models
@@ -3109,7 +3191,8 @@ begin
   Abm :=
     20.41 + 9.83 * log10(d) + 7.894 * log10(f) + 9.56 * (log10(f) * log10(f));
   Gb := log10(TxH / 200) * (13.958 + 5.8 * (log10(d) * log10(d)));
-  if (mode in [TEnvironment.evSuburban, TEnvironment.evRural]) then    // Medium city (Europe)
+  if (mode in [TEnvironment.evSuburban, TEnvironment.evRural]) then
+    // Medium city (Europe)
     Gr := (42.57 + 13.7 * log10(f)) * (log10(RxH) - 0.585);
 
   Result := Afs + Abm - Gb - Gr;
@@ -3246,21 +3329,23 @@ Plane Earth Loss model
 Frequency: N/A
 Distance (km): Any
 *)
-	// Plane earth loss is independent of frequency.
-	result := 40*log10(d) + 20*log10(TxH) + 20*log10(RxH);
+  // Plane earth loss is independent of frequency.
+  Result := 40 * log10(d) + 20 * log10(TxH) + 20 * log10(RxH);
 end;
 
 function SoilPathLoss(f, d, terdic: double): double;
-var soil: double;
+var
+  soil: double;
 begin
-  soil := (120/terdic);
-  result := (6.4 + _20log10f(d) + _20log10f(f)+(8.69*soil));
+  soil := (120 / terdic);
+  Result := (6.4 + _20log10f(d) + _20log10f(f) + (8.69 * soil));
 end;
 
 function SUIpathLoss(f, TxH, RxH, d: double; mode: TEnvironment): double;
-var a,b,c,s, XhCF: double;
-    d0,_A,y: double;
-    Xf, Xh: double;
+var
+  a, b, c, s, XhCF: double;
+  d0, _A, y: double;
+  Xf, Xh: double;
 begin
         (*
            f = Frequency (MHz) 1900 to 11000
@@ -3276,44 +3361,44 @@ begin
            http://www.cl.cam.ac.uk/research/dtg/lce-pub/public/vsa23/VTC05_Empirical.pdf
            https://mentor.ieee.org/802.19/file/08/19-08-0010-00-0000-sui-path-loss-model.doc
          *)
-        d := d * 1e3;               // km to m
+  d := d * 1e3;               // km to m
 
-        // Urban (A1) is default
-        a := 4.6;
-        b := 0.0075;
-        c := 12.6;
-        s := 8.2; // Optional fading value. 8.2 to 10.6dB
-        XhCF := -10.8;
+  // Urban (A1) is default
+  a := 4.6;
+  b := 0.0075;
+  c := 12.6;
+  s := 8.2; // Optional fading value. 8.2 to 10.6dB
+  XhCF := -10.8;
 
-        if (mode = TEnvironment.evSuburban) then  // Suburban
-        begin
-                a := 4.0;
-                b := 0.0065;
-                c := 17.1;
-		XhCF := -10.8;
-        end;
-        if (mode = TEnvironment.evRural) then  // Rural
-        begin
-                a := 3.6;
-                b := 0.005;
-                c := 20;
-                XhCF := -20;
-        end;
-        d0 := 100.0;
-        _A := _20log10f((4 * PI * d0) / (300.0 / f));
-        y := a - (b * TxH) + (c / TxH);
+  if (mode = TEnvironment.evSuburban) then  // Suburban
+  begin
+    a := 4.0;
+    b := 0.0065;
+    c := 17.1;
+    XhCF := -10.8;
+  end;
+  if (mode = TEnvironment.evRural) then  // Rural
+  begin
+    a := 3.6;
+    b := 0.005;
+    c := 20;
+    XhCF := -20;
+  end;
+  d0 := 100.0;
+  _A := _20log10f((4 * PI * d0) / (300.0 / f));
+  y := a - (b * TxH) + (c / TxH);
 
-	// Assume 2.4GHz
-        Xf := 0;
-        Xh := 0;
+  // Assume 2.4GHz
+  Xf := 0;
+  Xh := 0;
 
-        //Correction factors for > 2GHz
-	if(f>2000) then
-        begin
-		Xf:=6.0 * log10(f / 2.0);
-		Xh:=XhCF * log10(RxH / 2.0);
-        end;
-        result := _A + (10 * y) * (log10(d / d0)) + Xf + Xh + s;
+  //Correction factors for > 2GHz
+  if (f > 2000) then
+  begin
+    Xf := 6.0 * log10(f / 2.0);
+    Xh := XhCF * log10(RxH / 2.0);
+  end;
+  Result := _A + (10 * y) * (log10(d / d0)) + Xf + Xh + s;
 end;
 
 end.

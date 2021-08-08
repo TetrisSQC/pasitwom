@@ -38,7 +38,6 @@
 * The additional models are made for Signal Server by Alex Farrant              *
 * Translation do Pascal made by Christian Hackbart                              *
 ********************************************************************************)
-
 unit uitwom;
 
 {$mode objfpc}{$H+}
@@ -183,6 +182,21 @@ type
     ws, w1: boolean; // avar
   end;
 
+function power(base, exponent: float): float;
+begin
+  if Exponent = 0.0 then
+    Result := 1.0
+  else if (base = 0.0) and (exponent > 0.0) then
+    Result := 0.0
+  else if (abs(exponent) <= maxint) and (frac(exponent) = 0.0) then
+    Result := intpower(base, trunc(exponent))
+  else
+  begin
+    Result := exp(exponent * ln(Abs(base)));
+    if base < 0 then
+      Result := -Result;
+  end;
+end;
 
 function mymin(const i, j: integer): integer; inline; overload;
 begin
@@ -223,7 +237,7 @@ begin
   if (x > y) then
     Result := x - y
   else
-    Result := 0;
+    Result := 0.0;
 end;
 
 function aknfe(const v2: double): double;
@@ -555,7 +569,11 @@ begin
       wa := power(a * prop.wn, THIRD);
       pk := qk / wa;
       q := (1.607 - pk) * 151.0 * wa * th + xht;
-      ar := 0.05751 * q - 4.343 * ln(q) - aht;
+      if q > 0 then
+        ar := 0.05751 * q - 4.343 * ln(q) - aht
+      else
+        ar := 0;
+
       q := (wd1 + xd1 / d) * mymin(
         ((1.0 - 0.8 * exp(-d / 50e3)) * prop.dh * prop.wn), 6283.2);
       wd := 25.1 / (25.1 + sqrt(q));
@@ -610,8 +628,10 @@ begin
       q := q * (0.78 * exp(-power(q / 16.0, 0.25)));
       qk := 1.0 / absc(prop_zgnd);
       aht := 20.0;
-      xht := 0.0;
-      a := 0.5 * (prop.dl[0] * prop.dl[0]) / prop.he[0];
+      if prop.he[0] = 0 then
+       a := 1 //TODO: Test
+      else
+       a := 0.5 * (prop.dl[0] * prop.dl[0]) / prop.he[0];
       wa := power(a * prop.wn, THIRD);
       pk := qk / wa;
       q := (1.607 - pk) * 151.0 * wa * prop.dl[0] / a;
@@ -643,6 +663,7 @@ begin
       ds := d - propa.dla;
       a := ds / th;
       wa := power(a * prop.wn, THIRD);
+
       if wa = 0 then
         pk := 0
       else
@@ -1444,7 +1465,11 @@ begin
       d4 := d3 + 2.7574 * xae;
       a3 := adiff2(AProfile, d3);
       a4 := adiff2(AProfile, d4);
-      propa.emd := (a4 - a3) / (d4 - d3);
+      if (d4 - d3) = 0 then
+        propa.emd := 0
+      else
+        propa.emd := (a4 - a3) / (d4 - d3);
+
       propa.aed := a3 - propa.emd * d3;
     end;
 
@@ -2143,9 +2168,16 @@ begin
   end;
 
   a := a / (xa + 2);
-  b := b / bn;
-  z0 := a - (b * xb);
-  zn := a + (b * (xn - xb));
+  if bn <> 0 then
+  begin
+   b := b / bn;
+   z0 := a - (b * xb);
+   zn := a + (b * (xn - xb));
+  end else
+  begin //TODO: Test
+    z0 := 0;
+    zn := 0;
+  end;
 end;
 
 function qtile(const nn: integer; var a: array of double; const offset: integer;
@@ -2451,6 +2483,7 @@ begin
   end;
 end;
 
+
 procedure qlrpfl2(var AProfile: TProfileData; const pfl: array of double;
   const klimx, mdvarx: integer);
 var
@@ -2458,14 +2491,14 @@ var
   xl: array[0..1] of double;
   dlb, q, za, zb, temp, rad, rae1, rae2: double;
 begin
+  q := 0;
+  za := 0;
+  zb := 0;
+  rae2 := 0;
+  rae1 := 0;
+
   with AProfile do
   begin
-    rae1 := 0;
-    rae2 := 0;
-    zb := 0;
-    q := 0;
-    za := 0;
-
     prop.dist := pfl[0] * pfl[1];
     np := trunc(pfl[0]);
     hzns2(AProfile, pfl);
@@ -2497,8 +2530,9 @@ begin
         prop.he[1] := prop.hg[1] + FORTRAN_DIM(pfl[np + 2], zb);
 
         for j := 0 to 1 do
-          prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
-            -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+          prop.dl[j] :=
+            sqrt(2.0 * prop.he[j] / prop.gme) * exp(-0.07 *
+            sqrt(prop.dh / mymax(prop.he[j], 5.0)));
 
         (* for one or more obstructions only NOTE buried as in ITM FORTRAN and DLL, not functional  *)
         if ((prop.dl[0] + prop.dl[1]) <= prop.dist) then
@@ -2511,21 +2545,26 @@ begin
         for j := 0 to 1 do
         begin
           prop.he[j] := prop.he[j] * q;
-          prop.dl[j] := sqrt(2.0 * prop.he[j] / prop.gme) * exp(
-            -0.07 * sqrt(prop.dh / mymax(prop.he[j], 5.0)));
+          prop.dl[j] :=
+            sqrt(2.0 * prop.he[j] / prop.gme) * exp(-0.07 *
+            sqrt(prop.dh / mymax(prop.he[j], 5.0)));
         end;
 
         (* this sets (or resets) prop.the, and is not in The Guide FORTRAN QLRPFL *)
         for j := 0 to 1 do
         begin
           q := sqrt(2.0 * prop.he[j] / prop.gme);
-          prop.the[j] := (0.65 * prop.dh * (q / prop.dl[j] - 1.0) -
-            2.0 * prop.he[j]) / q;
+          if q = 0 then
+           prop.the[j] := 0 //TODO: Test
+          else
+           prop.the[j] :=
+            (0.65 * prop.dh * (q / prop.dl[j] - 1.0) - 2.0 * prop.he[j]) / q;
         end;
       end;
     end
-    else    (* for ITWOM ,computes he for tx, rcvr, and the receiver approach angles for use in saalos *)
-    begin
+    else
+    begin      (* for ITWOM ,computes he for tx, rcvr, and the receiver approach angles for use in saalos *)
+
       prop.he[0] := prop.hg[0] + (pfl[2]);
       prop.he[1] := prop.hg[1] + (pfl[np + 2]);
 
@@ -2548,7 +2587,8 @@ begin
         prop.thera := -prop.thera;
       end;
 
-      prop.thenr := arctan(mymax(0.0, (pfl[np + 2] - pfl[np + 1])) / pfl[1]);
+      prop.thenr :=
+        arctan(mymax(0.0, (pfl[np + 2] - pfl[np + 1])) / pfl[1]);
 
     end;
 
@@ -2625,6 +2665,7 @@ var
 begin
   zsys := 0;
   fillchar({%H-}Profile, sizeof(TProfileData), 0);
+
   with Profile do
   begin
     prop.hg[0] := tht_m;

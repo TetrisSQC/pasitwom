@@ -1,29 +1,39 @@
-unit umain;
+unit UMain;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, uitwom, Math;
+  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
+  ComCtrls, BGRABitmap, upathloss;
 
 type
 
-  { TForm1 }
+  { TfrmMain }
 
-  TForm1 = class(TForm)
-    Memo1: TMemo;
+  TfrmMain = class(TForm)
+    imgRender: TImage;
+    mmoMain: TMemo;
+    pgMain: TPageControl;
+    tsRendering: TTabSheet;
+    tsTest: TTabSheet;
+    tmrMain: TTimer;
     procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure tmrMainTimer(Sender: TObject);
   private
-
+    FPath: TPathLoss;
   public
-
+    procedure Test;
   end;
 
 var
-  Form1: TForm1;
+  frmMain: TfrmMain;
 
 implementation
+
+uses UPathRenderer, uitwom, math;
 
 {$R *.lfm}
 
@@ -74,73 +84,79 @@ const
     //99999
     );
 
-{ TForm1 }
+{ TfrmMain }
 
-procedure TForm1.FormCreate(Sender: TObject);
+procedure TfrmMain.FormCreate(Sender: TObject);
+var
+  Source: TSite;
+
+begin
+  Test;
+  Source.Lat := 47.63194444;
+  Source.Lon := -122.3538889;
+  Source.Alt := 130;
+  Source.Caption := 'KOMO-TV';
+  FPath := TPathLoss.Create;
+  FPath.MaxRange := 20;
+  FPath.Model := TPathLossModel.pmITWOM3;
+  FPath.Calculate(Source, 5, false);
+  FPath.UseDBm:=false;
+end;
+
+procedure TfrmMain.FormDestroy(Sender: TObject);
+begin
+  FPath.Free;
+end;
+
+procedure TfrmMain.Test();
 var
   loss: double;
   strmode: string;
   errno: integer;
 begin
+  mmoMain.lines.Clear;
+  (*
+      dbloss: 98.19
+      strmode: 1_Hrzn_Diff
+      errnum: 0
+  *)
   point_to_point(elev, tht_m, rht_m, eps_dielect, sgm_conductivity, eno_ns_surfref,
     frq_mhz, radio_climate, pol, conf, rel,
     loss, strmode, errno);
 
-  (*
-point_to_point:
-  elev[0] = 18.000000
-  elev[1] = 70.000208
-  elev[2..n] =  159.000005, 165.000005, 166.000005, 167.000005, 164.000005, 156.000005, 151.000005, 150.000005, 150.000005, 149.000005, 148.000005, 148.000005, 148.000005, 150.000005, 149.000005, 151.000005, 160.000005, 162.000005,
-tht_m: 7.620000
-rht_m: 6.096000
-eps_dielect: 15.000000
-sgm_conductivity: 0.005000
-eno_ns_surfref: 301.000000
-freq_mhz: 900.000000
-radio climate: 5
-pol: 0
-conf: 0.500000
-rel: 0.500000
-dbloss: 98.19
-strmode: 1_Hrzn_Diff
-errnum: 0
-*)
-  memo1.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d', [loss, strmode, errno]));
+  mmoMain.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d', [loss, strmode, errno]));
 
+
+  (*
+      dbloss: 90.45
+      strmode: L-o-S
+      errnum: 4
+  *)
   point_to_point(elev2, tht_m, rht_m, eps_dielect, sgm_conductivity, eno_ns_surfref,
     frq_mhz, radio_climate, pol, conf, rel,
     loss, strmode, errno);
 
-  (* check a short path
-  -----------------------------------------------------------------------
-  point_to_point:
-    elev[0] = 1.000000
-    elev[1] = 70.000208
-    elev[2..n] =  159.000005,
-    elev[n..100] =  165.000005, 166.000005, 167.000005, 164.000005, 156.000005, 151.000005, 150.000005, 150.000005, 149.000005, 148.000005, 148.000005, 148.000005, 150.000005, 149.000005, 151.000005, 160.000005, 162.000005, 160.000005, 159.000005, 157.000005, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000,
-  tht_m: 7.620000
-  rht_m: 6.096000
-  eps_dielect: 15.000000
-  sgm_conductivity: 0.005000
-  eno_ns_surfref: 301.000000
-  freq_mhz: 900.000000
-  radio climate: 5
-  pol: 0
-  conf: 0.500000
-  rel: 0.500000
-  dbloss: 90.45
-  strmode: L-o-S
-  errnum: 4
-  -----------------------------------------------------------------------
-  *)
-
-  memo1.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d', [loss, strmode, errno]));
-
-  (*
-   dbloss:    98,19, mode: 1_Hrzn_Diff, errno: 0
-   dbloss:    90,44, mode: L-o-S, errno: 4
-  *)
+  mmoMain.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d', [loss, strmode, errno]));
 end;
 
+procedure TfrmMain.tmrMainTimer(Sender: TObject);
+var
+  Bitmap: TBGRABitmap;
+  Renderer: TPathRenderer;
+begin
+  Bitmap := TBGRABitmap.Create;
+  Renderer := TPathRenderer.Create;
+  try
+    if Renderer.Render(FPath, Bitmap, rtPathLoss) then //rtLineOfSight) then
+    begin
+      imgRender.Picture.Assign(Bitmap);
+      if not FPath.IsCalulating then
+        Bitmap.savetofile('output.png');
+    end;
+  finally
+    Renderer.Free;
+    Bitmap.Free;
+  end;
+end;
 
 end.

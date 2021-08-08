@@ -33,7 +33,7 @@ var
 
 implementation
 
-uses UPathRenderer, uitwom, math;
+uses UPathRenderer, uitwom, Math;
 
 {$R *.lfm}
 
@@ -99,8 +99,8 @@ begin
   FPath := TPathLoss.Create;
   FPath.MaxRange := 20;
   FPath.Model := TPathLossModel.pmITWOM3;
-  FPath.Calculate(Source, 5, false);
-  FPath.UseDBm:=false;
+  FPath.Calculate(Source, 5, False);
+  FPath.UseDBm := False;
 end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
@@ -114,7 +114,7 @@ var
   strmode: string;
   errno: integer;
 begin
-  mmoMain.lines.Clear;
+  mmoMain.Lines.Clear;
   (*
       dbloss: 98.19
       strmode: 1_Hrzn_Diff
@@ -124,7 +124,8 @@ begin
     frq_mhz, radio_climate, pol, conf, rel,
     loss, strmode, errno);
 
-  mmoMain.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d', [loss, strmode, errno]));
+  mmoMain.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d',
+    [loss, strmode, errno]));
 
 
   (*
@@ -136,7 +137,8 @@ begin
     frq_mhz, radio_climate, pol, conf, rel,
     loss, strmode, errno);
 
-  mmoMain.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d', [loss, strmode, errno]));
+  mmoMain.Lines.add(format('dbloss: %8.2f, mode: %s, errno: %d',
+    [loss, strmode, errno]));
 end;
 
 procedure TfrmMain.tmrMainTimer(Sender: TObject);
@@ -151,7 +153,10 @@ begin
     begin
       imgRender.Picture.Assign(Bitmap);
       if not FPath.IsCalulating then
-        Bitmap.savetofile('output.png');
+      begin
+        Bitmap.savetofile(ExtractFilePath(application.exename) + 'output.png');
+        tmrMain.Enabled := False;
+      end;
     end;
   finally
     Renderer.Free;

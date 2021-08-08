@@ -55,8 +55,8 @@ const
   EARTHRADIUS_MILES = 3959.0;
   DEG2RAD = 1.74532925199e-02;
 
-  SRTM1_URL = 'https://srtm.kurviger.de/SRTM1/';
-  SRTM3_URL = 'https://srtm.kurviger.de/SRTM3/';
+  SRTM1_URL = 'http://srtm.kurviger.de/SRTM1/';
+  SRTM3_URL = 'http://srtm.kurviger.de/SRTM3/';
 
 function GetHGTFile(ALat, ALon: double): string;
 var
@@ -152,7 +152,7 @@ end;
 constructor TSRTMSegment.Create(const ALat, ALon: double; const AHDMode: boolean;
   const ACacheDir: string = '');
 var
-  Stream: TFileStream;
+  Stream: TMemoryStream;
   http: TFPHttpClient;
   Filename: string;
   DownloadUrl: string;
@@ -186,7 +186,7 @@ begin
 
   if not FileExists(CacheDir + Filename) then
   begin
-    Stream := TFileStream.Create(CacheDir + Filename, fmCreate);
+    Stream := TMemoryStream.Create;
     http := TFPHttpClient.Create(nil);
     try
       try
@@ -199,6 +199,8 @@ begin
             'hgt.zip', []), Stream);
         except
         end;
+      if Stream.Size > 0 then
+       Stream.SaveToFile(CacheDir + Filename);
     finally
       Stream.Free;
       http.Free;

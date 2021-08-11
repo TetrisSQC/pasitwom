@@ -134,10 +134,10 @@ type
 
     function PutMask(const ALat, ALon: double; const AValue: integer): integer;
     function OrMask(const ALat, ALon: double; const AValue: integer): integer;
-    function GetMask(const ALat, ALon: double): integer; overload;
-    procedure PutSignal(const ALat, ALon: double; const ASignal: byte);
+    function GetMask(const ALat, ALon: double): integer;
+
+    procedure PutSignal(const ALat, ALon: double; const ASignal: byte); virtual;
     function GetSignal(const ALat, ALon: double): byte;
-    function GetSignal(const X, Y: integer): byte;
 
     procedure PlotLOSPath(const ASource, ADestination: TSite; const AMaskValue: byte);
     procedure PlotPropPath(const ASource, ADestination: TSite; const AMaskValue: byte);
@@ -158,8 +158,8 @@ type
     function SiteToOffset(const ALat, ALon: double; out Offset: integer): boolean;
       overload;
 
-    function GetMask(const AOffset: integer): byte; overload;
-    function GetSignal(const AOffset: integer): byte; overload;
+    function GetMaskValue(const AOffset: integer): byte;
+    function GetSignalValue(const AOffset: integer): byte;
 
     procedure GetElevation(Sender: TObject; ALat, ALon: double;
       out Elevation: double);
@@ -190,6 +190,61 @@ type
     property MinElevation: double read FMinElevation;
 
     property OnComplete: TNotifyEvent read FOnComplete write FOnComplete;
+  end;
+
+  TCalculatorItem = class
+  private
+    FLat: double;
+    FLon: double;
+    FSignal: byte;
+  public
+    constructor Create(const ALat, ALon: double; const ASignal: byte);
+    property Lat: double read FLat;
+    property Lon: double read FLon;
+    property Signal: byte read FSignal;
+  end;
+
+  TCalculator = class(TObjectList)
+  protected
+    FHDMode: boolean;
+    FClutter: double;
+    FSRTM: TSRTM;
+    procedure GetElevation(Sender: TObject; ALat, ALon: double;
+      out Elevation: double);
+    function GetPixelPerDegree: integer;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure Calculate(const ASource, ADestination: TSite); virtual; abstract;
+
+    property HDMode: boolean read FHDMode write FHDMode;
+    property Clutter: double read FClutter write FClutter;
+  end;
+
+  TLOSCalculator = class(TCalculator)
+  public
+    procedure Calculate(const ASource, ADestination: TSite); override;
+  end;
+
+  TPropCalculator = class(TCalculator)
+  private
+    FGotElevationPattern: boolean;
+    FModel: TPathlossModel;
+    FUseDBm: boolean;
+    FSettings: TSettings;
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure Calculate(const ASource, ADestination: TSite); override;
+
+    property GotElevationPattern: boolean read FGotElevationPattern
+      write FGotElevationPattern;
+
+    property Model: TPathLossModel read FModel write FModel;
+    property UseDBm: boolean read FUseDBm write FUseDBm;
+    property Settings: TSettings read FSettings;
   end;
 
 implementation
@@ -831,7 +886,6 @@ end;
 
 function TPathLoss.GetPixelPerDegree: integer;
 begin
-  //PixelPerDegree: array[boolean] of word = (1200, 3600);
   if FHDMode then
     Result := 3600
   else
@@ -873,9 +927,8 @@ function TPathLoss.SiteToOffset(const ALat, ALon: double;
 begin
   FLock.Enter;
   try
-    //LonDiff(FMaxWest, Alon)
-    x := trunc(FHeight * (Alat - FMinNorth) / (FMaxNorth - FMinNorth));
-    y := FHeight - trunc(FHeight * ((ALon - FMinWest) / (FMaxWest - FMinWest)));
+    y := FHeight - trunc(FHeight * (Alat - FMinNorth) / (FMaxNorth - FMinNorth));
+    x := trunc(FHeight * ((ALon - FMinWest) / (FMaxWest - FMinWest)));
 
     Result := (x >= 0) and (x < FHeight) and (y >= 0) and (y < FHeight);
     if Result then
@@ -894,12 +947,12 @@ begin
   Result := SiteToOffset(ALat, ALon, x, y, Offset);
 end;
 
-function TPathloss.GetSignal(const AOffset: integer): byte;
+function TPathloss.GetSignalValue(const AOffset: integer): byte;
 begin
   Result := FSignal[AOffset];
 end;
 
-function TPathloss.GetMask(const AOffset: integer): byte;
+function TPathloss.GetMaskValue(const AOffset: integer): byte;
 begin
   Result := FMask[AOffset];
 end;
@@ -1190,12 +1243,6 @@ begin
     four_thirds_earth := FOUR_THIRDS * EARTHRADIUS;
 
     (* Copy elevations plus clutter along path into the elev[] array. *)
-    (*List := TStringList.Create;
-    for x := 0 to Path.Count - 1 do
-      List.Add(TPathItem(Path[x]).AsString);
-    List.SaveToFile('path.txt');
-    list.Free;
-    *)
     for x := 1 to path.Count - 2 do
     begin
       elev[x + 2] := TPathItem(Path[x]).elevation * METERS_PER_FOOT;
@@ -1304,8 +1351,8 @@ begin
 
         (* Distance between elevation samples *)
 
-        elev[1] := METERS_PER_MILE * (p.distance -
-          TPathItem(path[y - 1]).distance);
+        elev[1] := METERS_PER_MILE *
+          (p.distance - TPathItem(path[y - 1]).distance);
 
         dkm := (elev[1] * elev[0]) / 1000;  // km
 
@@ -1604,16 +1651,6 @@ begin
   end;
 end;
 
-function TPathLoss.GetSignal(const X, Y: integer): byte;
-begin
-  FLock.Enter;
-  try
-    Result := FSignal[Y * FHeight + X];
-  finally
-    FLock.Leave;
-  end;
-end;
-
 procedure TPathLoss.CompleteTask;
 var
   bComplete: boolean;
@@ -1632,6 +1669,418 @@ begin
 
     if assigned(FOnComplete) then
       FOnComplete(self);
+  end;
+end;
+
+
+{ TCalculatorItem }
+constructor TCalculatorItem.Create(const ALat, ALon: double; const ASignal: byte);
+begin
+  FLat := ALat;
+  FLon := ALon;
+  FSignal := ASignal;
+end;
+
+{ TCalculator }
+constructor TCalculator.Create;
+begin
+  inherited Create(True);
+  FSRTM := TSRTM.Create;
+end;
+
+destructor TCalculator.Destroy;
+begin
+  FSRTM.Free;
+  inherited;
+end;
+
+procedure TCalculator.GetElevation(Sender: TObject; ALat, ALon: double;
+  out Elevation: double);
+begin
+  Elevation := 3.28084 * FSRTM.GetElevation(ALat, ALon);
+end;
+
+function TCalculator.GetPixelPerDegree: integer;
+begin
+  if FHDMode then
+    Result := 3600
+  else
+    Result := 1200;
+end;
+
+{ TLOSCalculator }
+procedure TLOSCalculator.Calculate(const ASource, ADestination: TSite);
+var
+  block: boolean;
+  x, y: integer;
+  cos_xmtr_angle, cos_test_angle, test_alt: double;
+  distance, rx_alt, tx_alt: double;
+  Path: TPath;
+  p: TPathItem;
+begin
+  FSRTM.Load(ASource.Lat, ASource.Lon,
+    GetDistance(ASource, ADestination));
+
+  Path := TPath.Create(ASource, ADestination, GetPixelPerDegree, @GetElevation);
+  try
+    for y := 0 to Path.Count - 2 do
+    begin
+      p := TPathItem(path[y]);
+    (* Test this point only if it hasn't been already
+       tested and found to be free of obstructions. *)
+
+      distance := FEET_PER_MILE * p.distance;
+      tx_alt := earthradius + ASource.alt + TPathItem(path[0]).elevation;
+      rx_alt :=
+        earthradius + ADestination.alt + p.elevation;
+
+      (* Calculate the cosine of the elevation of the
+         transmitter as seen at the temp rx point. *)
+      if distance = 0 then
+        continue;
+
+      cos_xmtr_angle :=
+        ((rx_alt * rx_alt) + (distance * distance) - (tx_alt * tx_alt)) /
+        (2.0 * rx_alt * distance);
+
+      block := False;
+      for x := y downto 0 do
+      begin
+        distance :=
+          FEET_PER_MILE * (p.distance - TPathItem(path[x]).distance);
+        if distance = 0 then
+          continue;
+        if TPathItem(path[x]).elevation = 0 then
+          test_alt :=
+            earthradius + TPathItem(path[x]).elevation
+        else
+          test_alt :=
+            earthradius + TPathItem(path[x]).elevation + FClutter;
+
+        cos_test_angle :=
+          ((rx_alt * rx_alt) + (distance * distance) - (test_alt * test_alt)) /
+          (2.0 * rx_alt * distance);
+
+        (* Compare these two angles to determine if
+           an obstruction exists.  Since we're comparing
+           the cosines of these angles rather than
+           the angles themselves, the following "if"
+           statement is reversed from what it would
+           be if the actual angles were compared. *)
+
+        if (cos_xmtr_angle >= cos_test_angle) then
+        begin
+          block := True;
+          break;
+        end;
+      end;
+
+      if not block then
+        Add(TCalculatorItem.Create(p.lat, p.lon, 1));
+    end;
+  finally
+    Path.Free;
+  end;
+end;
+
+
+{ TPropCalculator }
+
+constructor TPropCalculator.Create;
+begin
+  inherited;
+  FSettings := TSettings.Create;
+  FModel := TPathLossModel.pmITWOM3;
+end;
+
+destructor TPropCalculator.Destroy;
+begin
+  FSettings.Free;
+  inherited;
+end;
+
+procedure TPropCalculator.Calculate(const ASource, ADestination: TSite);
+var
+  x, y, ifs, errnum: integer;
+  block: boolean;
+  strmode: string;
+  Xmtr_alt: double;
+  dest_alt, xmtr_alt2, dest_alt2, cos_rcvr_angle, cos_test_angle,
+  test_alt, delevation, pattern, dBm, distance, four_thirds_earth,
+  rxp, field_strength: double;
+  Path: TPath;
+  elev: array of double;
+  Temp: TSite;
+
+  azimuth: double;
+  loss: double;
+  dkm: double;
+  p: TPathItem;
+begin
+  block := False;
+  pattern := 0.0;
+  cos_test_angle := 0.0;
+  delevation := 0.0;
+  distance := 0.0;
+  field_strength := 0.0;
+
+  FSRTM.Load(ASource.Lat, ASource.Lon,
+    GetDistance(ASource, ADestination));
+
+  Path := TPath.Create(ASource, ADestination, GetPixelPerDegree, @GetElevation);
+  try
+    setlength(elev, path.Count + 2);
+    four_thirds_earth := FOUR_THIRDS * EARTHRADIUS;
+
+    (* Copy elevations plus clutter along path into the elev[] array. *)
+    for x := 1 to path.Count - 2 do
+    begin
+      elev[x + 2] := TPathItem(Path[x]).elevation * METERS_PER_FOOT;
+      if elev[x + 2] > 0 then
+        elev[x + 2] := elev[x + 2] + FClutter * METERS_PER_FOOT;
+    end;
+
+    (* Copy ending points without clutter *)
+
+    elev[2] := TPathItem(path[0]).elevation * METERS_PER_FOOT;
+    elev[Path.Count + 1] := TPathItem(path[path.Count - 1]).elevation * METERS_PER_FOOT;
+
+  (* Since the only energy the propagation model considers
+     reaching the destination is based on what is scattered
+     or deflected from the first obstruction along the path,
+     we first need to find the location and elevation angle
+     of that first obstruction (if it exists).  This is done
+     using a 4/3rds Earth radius to match the radius used by
+     the irregular terrain propagation model.  This information
+     is required for properly integrating the antenna's elevation
+     pattern into the calculation for overall path loss. *)
+
+    y := 2;
+    while y < path.Count - 1 do
+    begin
+      p := TPathItem(path[y]);
+
+      distance := 5280.0 * TPathItem(path[y]).distance;
+      Xmtr_alt := four_thirds_earth + ASource.alt + TPathItem(Path[0]).elevation;
+      dest_alt := four_thirds_earth + ADestination.alt + TPathItem(path[y]).elevation;
+      dest_alt2 := dest_alt * dest_alt;
+      xmtr_alt2 := Xmtr_alt * Xmtr_alt;
+
+      (* Calculate the cosine of the elevation of
+         the receiver as seen by the transmitter. *)
+
+      cos_rcvr_angle := ((xmtr_alt2) + (distance * distance) - (dest_alt2)) /
+        (2.0 * Xmtr_alt * distance);
+
+      if (cos_rcvr_angle > 1.0) then
+        cos_rcvr_angle := 1.0;
+
+      if (cos_rcvr_angle < -1.0) then
+        cos_rcvr_angle := -1.0;
+
+      if FGotElevationPattern then
+      begin
+        (* Determine the elevation angle to the first obstruction
+           along the path IF elevation pattern data is available
+           or an output (.ano) file has been designated. *)
+        x := 2;
+        block := False;
+        while (x < y) and (not block) do
+        begin
+          distance := 5280.0 * TPathItem(path[x]).distance;
+
+          if TPathItem(path[x]).elevation = 0.0 then
+            test_alt := four_thirds_earth + TPathItem(path[x]).elevation
+          else
+            test_alt :=
+              four_thirds_earth + TPathItem(path[x]).elevation + FClutter;
+
+          (* Calculate the cosine of the elevation
+             angle of the terrain (test point)
+             as seen by the transmitter. *)
+
+          cos_test_angle := ((xmtr_alt2) + (distance * distance) -
+            (test_alt * test_alt)) / (2.0 * Xmtr_alt * distance);
+
+          if (cos_test_angle > 1.0) then
+            cos_test_angle := 1.0;
+
+          if (cos_test_angle < -1.0) then
+            cos_test_angle := -1.0;
+
+          (* Compare these two angles to determine if
+             an obstruction exists.  Since we're comparing
+             the cosines of these angles rather than
+             the angles themselves, the sense of the
+             following "if" statement is reversed from
+               what it would be if the angles themselves
+             were compared. *)
+
+          if (cos_rcvr_angle >= cos_test_angle) then
+            block := True;
+          Inc(x);
+        end;
+
+        if (block) then
+          delevation := ((arccos(cos_test_angle)) / DEG2RAD) - 90.0
+        else
+          delevation := ((arccos(cos_rcvr_angle)) / DEG2RAD) - 90.0;
+      end;
+
+      (* Determine attenuation for each point along
+         the path using ITWOM's point_to_point mode
+         starting at y=2 (number_of_points = 1), the
+         shortest distance terrain can play a role in
+         path loss. *)
+
+      elev[0] := y - 1;  (* (number of points - 1) *)
+
+      (* Distance between elevation samples *)
+
+      elev[1] := METERS_PER_MILE *
+        (p.distance - TPathItem(path[y - 1]).distance);
+
+      dkm := (elev[1] * elev[0]) / 1000;  // km
+
+      case FModel of
+        pmLongleyRice:
+        begin
+          point_to_point_ITM(elev, ASource.alt * METERS_PER_FOOT,
+            ADestination.alt * METERS_PER_FOOT, FSettings.eps_dielect,
+            FSettings.sgm_conductivity, FSettings.eno_ns_surfref, FSettings.frq_mhz,
+            FSettings.radio_climate, FSettings.pol, FSettings.conf,
+            FSettings.rel, loss,
+            strmode, errnum);
+        end;
+        pmHATA:
+        begin
+          loss :=
+            HATApathLoss(FSettings.frq_mhz, ASource.alt *
+            METERS_PER_FOOT, (TPathItem(path[y]).elevation * METERS_PER_FOOT) +
+            (ADestination.alt * METERS_PER_FOOT), dkm, FSettings.Environment);
+        end;
+        pmECC33:
+        begin
+          loss :=
+            ECC33pathLoss(FSettings.frq_mhz, ASource.alt *
+            METERS_PER_FOOT, (TPathItem(path[y]).elevation * METERS_PER_FOOT) +
+            (ADestination.alt * METERS_PER_FOOT), dkm, FSettings.Environment);
+        end;
+        pmSUI:
+        begin
+          loss :=
+            SUIpathLoss(FSettings.frq_mhz, ASource.alt * METERS_PER_FOOT,
+            (TPathItem(path[y]).elevation * METERS_PER_FOOT) +
+            (ADestination.alt * METERS_PER_FOOT), dkm, FSettings.Environment);
+        end;
+        pmCost231:
+        begin
+          loss :=
+            COST231pathLoss(FSettings.frq_mhz, ASource.alt *
+            METERS_PER_FOOT, (TPathItem(path[y]).elevation * METERS_PER_FOOT) +
+            (ADestination.alt * METERS_PER_FOOT), dkm, FSettings.Environment);
+        end;
+        pmFreespace:
+        begin
+          loss := FSPLpathLoss(Settings.frq_mhz, dkm);
+        end;
+        pmITWOM3:
+        begin
+          point_to_point(elev, ASource.alt * METERS_PER_FOOT,
+            ADestination.alt * METERS_PER_FOOT, FSettings.eps_dielect,
+            FSettings.sgm_conductivity, FSettings.eno_ns_surfref, FSettings.frq_mhz,
+            FSettings.radio_climate, FSettings.pol, FSettings.conf,
+            FSettings.rel, loss,
+            strmode, errnum);
+        end;
+        pmEricsson:
+        begin
+          loss :=
+            EricssonpathLoss(FSettings.frq_mhz, ASource.alt *
+            METERS_PER_FOOT, (TPathItem(path[y]).elevation * METERS_PER_FOOT) +
+            (ADestination.alt * METERS_PER_FOOT), dkm, FSettings.Environment);
+        end;
+        pmPlainEarth:
+        begin
+          // Plane earth
+          loss := PlaneEarthLoss(dkm, ASource.alt * METERS_PER_FOOT,
+            (TPathItem(path[y]).elevation * METERS_PER_FOOT) +
+            (ADestination.alt * METERS_PER_FOOT));
+        end;
+        pmEgli:
+        begin
+          // Egli VHF/UHF
+          loss := EgliPathLoss(FSettings.frq_mhz, ASource.alt *
+            METERS_PER_FOOT, (TPathItem(path[y]).elevation * METERS_PER_FOOT) +
+            (ADestination.alt * METERS_PER_FOOT), dkm);
+        end;
+        pmSoil:
+        begin
+          // Soil
+          loss := SoilPathLoss(FSettings.frq_mhz, dkm, FSettings.eps_dielect);
+        end;
+      end;
+
+      temp.lat := p.lat;
+      temp.lon := p.lon;
+
+      azimuth := (GetAzimuth(ASource, temp));
+
+      (* Integrate the antenna's radiation
+         pattern into the overall path loss. *)
+
+      x := round(10.0 * (10.0 - delevation));
+
+      if (x >= 0) and (x <= 1000) then
+      begin
+        azimuth := round(azimuth);
+
+        pattern := FSettings.antenna_pattern[trunc(azimuth)][x];
+
+        if (pattern <> 0.0) then
+        begin
+          pattern := 20.0 * log10(pattern);
+          loss := loss - pattern;
+        end;
+      end;
+
+      if (FSettings.erp <> 0.0) then
+      begin
+        if (FUsedbm) then
+        begin
+          (* dBm is based on EIRP (ERP + 2.14) *)
+          rxp := FSettings.erp / (power(10.0, (loss - 2.14) / 10.0));
+          dBm := 10.0 * (log10(rxp * 1000.0));
+
+          ifs := 200 + round(dBm);
+        end
+        else
+        begin
+          field_strength := (139.4 + (20.0 * log10(FSettings.frq_mhz)) - loss) +
+            (10.0 * log10(FSettings.erp / 1000.0));
+
+          ifs := 100 + round(field_strength);
+        end;
+      end
+      else
+      begin
+        if (loss > 255) then
+          ifs := 255
+        else
+          ifs := round(loss);
+      end;
+
+      if (ifs < 0) then
+        ifs := 0;
+
+      if (ifs > 255) then
+        ifs := 255;
+
+      Add(TCalculatorItem.Create(p.lat, p.lon, ifs));
+      Inc(y);
+    end;
+  finally
+    Path.Free;
   end;
 end;
 

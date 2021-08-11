@@ -291,7 +291,7 @@ var
   data: byte;
   z: integer;
 begin
-    data := APathLoss.GetSignal(y * APathLoss.Height + x);
+    data := APathLoss.GetSignalValue(y * APathLoss.Height + x);
 
     case ARenderType of
       rtSignal:
@@ -425,7 +425,7 @@ begin
 
         if not SiteToOffset(lat, lon, x0, y0, offset) then
           continue;
-        mask := GetMask(offset);
+        mask := GetMaskValue(offset);
 
         GetElevation(self, lat, lon, pelevation);
         red := 0;

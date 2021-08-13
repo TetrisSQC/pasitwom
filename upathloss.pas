@@ -108,6 +108,7 @@ type
     FAltitude: array of integer;
 
     FModel: TPathlossModel;
+    FKnifeedge: boolean;
     FUseDBm: boolean;
     FGotElevationPattern: boolean;
 
@@ -176,6 +177,7 @@ type
     property Height: integer read FHeight;
     property HDMode: boolean read FHDMode write SetHDMode;
     property Model: TPathlossModel read FModel write FModel;
+    property Knifeedge: boolean read FKnifeedge write FKnifeedge;
 
     property PixelPerDegree: integer read GetPixelPerDegree;
     property Settings: TSettings read FSettings;
@@ -291,11 +293,71 @@ begin
     FParent.Propagate(FRange);
 end;
 
-destructor TPRocessThread.Destroy;
+destructor TProcessThread.Destroy;
 begin
   if assigned(FParent) then
     FParent.CompleteTask();
   inherited;
+end;
+
+(*
+ * Acute Angle from Rx point to an obstacle of height (opp) and
+ * distance (adj)
+ *)
+function incidenceAngle(const opp, adj: double): double;
+begin
+  Result := arctan2(opp, adj) * 180 / PI;
+end;
+
+(*
+ * Knife edge diffraction:
+ * This is based upon a recognised formula like Huygens, but trades
+ * thoroughness for increased speed which adds a proportional diffraction
+ * effect to obstacles.
+ *)
+function ked(const Elev: Array of Double; const freq, rxh: double; dkm: double): double;
+var obh, obd, rxobaoi, d: double;
+    n: integer;
+begin
+	rxobaoi := 0;
+
+	obh := 0;		// Obstacle height
+	obd := 0;		// Obstacle distance
+
+	dkm := dkm * 1000;	// KM to metres
+
+	// walk along path
+	for n := 2 to round(dkm / elev[1])-1 do
+        begin
+		d := (n - 2) * elev[1];	// no of points * delta = km
+
+		//Find dip(s)
+		if (elev[n] < obh) then
+                begin
+
+			// Angle from Rx point to obstacle
+			rxobaoi :=
+			    incidenceAngle((obh - (elev[n] + rxh)), d - obd);
+                end
+                else
+                begin
+			// Line of sight or higher
+			rxobaoi := 0;
+                end;
+
+		//note the highest point
+		if (elev[n] > obh) then
+                begin
+			obh := elev[n];
+			obd := d;
+                end;
+
+	end;
+
+	if (rxobaoi >= 0) then
+		result := (rxobaoi / (300 / freq))+3	// Diffraction angle divided by wavelength (m)
+	else
+		result := 1;
 end;
 
 function GetToken(var Line: string; ch: char = #9): string;
@@ -1050,7 +1112,7 @@ begin
 
   Path := TPath.Create(ASource, ADestination, PixelPerDegree, @GetElevation);
   try
-    for y := 0 to Path.Count - 2 do
+    for y := 0 to Path.Count - 1 do
     begin
       p := TPathItem(path[y]);
       if (p.distance > FMaxRange) then
@@ -1185,6 +1247,8 @@ begin
     finally
       SRTM.Free;
     end;
+
+    //with tfilestream.create(extractfilepath(paramstr(0))+'\altitude.map',fmcreate) do begin write(FAltitude[0],FHeight*FHeight*2); free; end;
   finally
     FLock.Leave;
   end;
@@ -1351,8 +1415,8 @@ begin
 
         (* Distance between elevation samples *)
 
-        elev[1] := METERS_PER_MILE *
-          (p.distance - TPathItem(path[y - 1]).distance);
+        elev[1] := METERS_PER_MILE * (p.distance -
+          TPathItem(path[y - 1]).distance);
 
         dkm := (elev[1] * elev[0]) / 1000;  // km
 
@@ -1434,6 +1498,10 @@ begin
             loss := SoilPathLoss(FSettings.frq_mhz, dkm, FSettings.eps_dielect);
           end;
         end;
+
+        if (FKnifeedge) and (FModel <> pmLongleyRice) then
+          loss := loss + ked(elev, Settings.frq_mhz, ADestination.Alt * METERS_PER_FOOT, dkm);
+        //Key stage. Link dB for p2p is returned as 'loss'.
 
         temp.lat := p.lat;
         temp.lon := p.lon;
@@ -1937,8 +2005,7 @@ begin
 
       (* Distance between elevation samples *)
 
-      elev[1] := METERS_PER_MILE *
-        (p.distance - TPathItem(path[y - 1]).distance);
+      elev[1] := METERS_PER_MILE * (p.distance - TPathItem(path[y - 1]).distance);
 
       dkm := (elev[1] * elev[0]) / 1000;  // km
 

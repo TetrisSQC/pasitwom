@@ -92,14 +92,15 @@ var
 
 begin
   Test;
-  Source.Lat := 47.63194444;
-  Source.Lon := -122.3538889;
+  //54.92806814110395;//
+  Source.Lat := 47.63194444;//54.92806814110395;
+  Source.Lon := -122.3538889;//8.318156693302578;
   Source.Alt := 130;
   Source.Caption := 'KOMO-TV';
   FPath := TPathLoss.Create;
-  FPath.MaxRange := 20;
+  FPath.MaxRange := 50;
   FPath.Model := TPathLossModel.pmITWOM3;
-  FPath.Calculate(Source, 5, False);
+  FPath.Calculate(Source, 5, false);
   FPath.UseDBm := False;
 end;
 

@@ -5,7 +5,7 @@ unit upathrenderer;
 interface
 
 uses
-  Classes, SysUtils, upathloss, bgrabitmap;
+  Classes, SysUtils, upathloss, bgrabitmap, BGRABitmapTypes;
 
 type
   TRegion = record
@@ -14,42 +14,52 @@ type
     levels: integer;
   end;
 
-  TRenderType = (rtSignal, rtPathLoss, rtRXPower, rtLineOfSight);
+  TColorRange = record
+    dfVal: double;
+    nR, nG, nB: byte;
+  end;
+
+  TRenderType = (rtSignal, rtPathLoss, rtRXPower, rtLineOfSight, rtElevation);
 
   TPathRenderer = class
   private
     FSignalRegion: TRegion;
     FLossRegion: TRegion;
     FDBmRegion: TRegion;
+    FColorSet: array of TColorRange;
 
     procedure LoadSignalColors;
     function FindMatch(const APathLoss: TPathloss; const x, y: integer;
       const ARenderType: TRenderType; const AContourThreshold: integer;
-      const ARegion: TRegion;
-      out DrawContour: boolean): byte;
+      const ARegion: TRegion; out DrawContour: boolean): byte;
+
+    function hillshade(const APathLoss: TPathLoss; const lat, lon: double): double;
+    function Colorize(dfVal, dfHillshade: double): TBGRAPixel;
+    procedure LoadDefaultColorSet;
   public
-    constructor create;
+    constructor Create;
     function Render(const APathLoss: TPathloss; const ABitmap: TBGRABitmap;
       const ARenderType: TRenderType; const APlotTerrain: boolean = True;
-      const AContourThreshold: integer = 0): Boolean;
+      const AContourThreshold: integer = 0): boolean;
   end;
 
 implementation
 
-uses Math, BGRABitmapTypes;
+uses Math;
 
 const
   GAMMA = 2.5;
 
-  constructor TPathRenderer.create;
-  begin
-    LoadSignalColors;
-  end;
+constructor TPathRenderer.Create;
+begin
+  LoadSignalColors;
+  LoadDefaultColorSet;
+end;
 
 procedure TPathRenderer.LoadSignalColors;
 begin
 
-   FSignalRegion.level[0] := 128;
+  FSignalRegion.level[0] := 128;
   FSignalRegion.color[0][0] := 255;
   FSignalRegion.color[0][1] := 0;
   FSignalRegion.color[0][2] := 0;
@@ -199,7 +209,7 @@ begin
 
   FLossRegion.levels := 16;
 
-    FDBmRegion.level[0] := 0;
+  FDBmRegion.level[0] := 0;
   FDBmRegion.color[0][0] := 255;
   FDBmRegion.color[0][1] := 0;
   FDBmRegion.color[0][2] := 0;
@@ -282,90 +292,232 @@ begin
   FDBmRegion.levels := 16;
 end;
 
+procedure TPathRenderer.LoadDefaultColorSet;
+
+  procedure Add(const AElevation: double; const AR, AG, AB: byte);
+  begin
+    SetLength(FColorSet, Length(FColorSet) + 1);
+    with FColorSet[high(FColorSet)] do
+    begin
+      dfVal := AElevation;
+      nR := AR;
+      nG := AG;
+      nB := AB;
+    end;
+  end;
+
+begin
+  SetLength(FColorSet, 0);
+  Add(0, 102, 153, 153);
+  Add(1, 46, 154, 88);
+  Add(600, 251, 255, 128);
+  Add(1200, 224, 108, 31);
+  Add(2500, 200, 55, 55);
+  Add(4000, 215, 244, 244);
+end;
+
+
+
 function TPathRenderer.FindMatch(const APathLoss: TPathloss;
-  const x, y: integer; const ARenderType: TRenderType; const AContourThreshold: integer;
-  const ARegion: TRegion;
+  const x, y: integer; const ARenderType: TRenderType;
+  const AContourThreshold: integer; const ARegion: TRegion;
   out DrawContour: boolean): byte;
 var
   signal, loss, dBm: integer;
-  data: byte;
+  Data: byte;
   z: integer;
 begin
-    data := APathLoss.GetSignalValue(y * APathLoss.Height + x);
+  Data := APathLoss.GetSignalValue(y * APathLoss.Height + x);
 
-    case ARenderType of
-      rtSignal:
+  case ARenderType of
+    rtElevation:
+    begin
+      Result := 0;
+      DrawContour := False;
+      exit;
+    end;
+    rtSignal:
+    begin
+      signal := Data - 100;
+      DrawContour := (AContourThreshold <> 0) and (signal < AContourThreshold);
+      if (signal >= ARegion.level[0]) then
       begin
-        signal := data - 100;
-        DrawContour := (AContourThreshold <> 0) and (signal < AContourThreshold);
-        if (signal >= ARegion.level[0]) then
+        Result := 0;
+        exit;
+      end
+      else
+      begin
+        for z := 1 to ARegion.levels - 1 do
         begin
-          Result := 0;
-          exit;
-        end
-        else
-        begin
-          for z := 1 to ARegion.levels - 1 do
+          if (signal < ARegion.level[z - 1]) and (signal >= ARegion.level[z]) then
           begin
-            if (signal < ARegion.level[z - 1]) and (signal >= ARegion.level[z]) then
+            Result := z;
+            exit;
+          end;
+        end;
+      end;
+    end;
+    rtPathLoss:
+    begin
+      loss := Data;
+      DrawContour := (Loss = 0) or ((AContourThreshold <> 0) and
+        (loss > abs(AContourThreshold)));
+      if (loss <= ARegion.level[0]) then
+      begin
+        Result := 0;
+        exit;
+      end
+      else
+      begin
+        for z := 1 to ARegion.levels - 1 do
+          if (z < ARegion.levels) then
+            if (loss >= ARegion.level[z - 1]) and (loss < ARegion.level[z]) then
             begin
               Result := z;
               exit;
             end;
-          end;
-        end;
-      end;
-      rtPathLoss:
-      begin
-        loss := data;
-        DrawContour := (Loss=0) or ((AContourThreshold <> 0) and (loss > abs(AContourThreshold)));
-        if (loss <= ARegion.level[0]) then
-        begin
-          Result := 0;
-          exit;
-        end
-        else
-        begin
-          for z := 1 to ARegion.levels - 1 do
-            if (z < ARegion.levels) then
-              if (loss >= ARegion.level[z - 1]) and (loss < ARegion.level[z]) then
-              begin
-                Result := z;
-                exit;
-              end;
-        end;
-      end;
-      rtRXPower:
-      begin
-        dBm := data - 200;
-        DrawContour := (AContourThreshold <> 0) and (dBm < AContourThreshold);
-        if (dBm >= ARegion.level[0]) then
-        begin
-          Result := 0;
-          exit;
-        end
-        else
-        begin
-          for z := 1 to ARegion.levels - 1 do
-            if (z < ARegion.levels) then
-              if (dBm < ARegion.level[z - 1]) and (dBm >= ARegion.level[z]) then
-              begin
-                Result := z;
-                exit;
-              end;
-        end;
       end;
     end;
+    rtRXPower:
+    begin
+      dBm := Data - 200;
+      DrawContour := (AContourThreshold <> 0) and (dBm < AContourThreshold);
+      if (dBm >= ARegion.level[0]) then
+      begin
+        Result := 0;
+        exit;
+      end
+      else
+      begin
+        for z := 1 to ARegion.levels - 1 do
+          if (z < ARegion.levels) then
+            if (dBm < ARegion.level[z - 1]) and (dBm >= ARegion.level[z]) then
+            begin
+              Result := z;
+              exit;
+            end;
+      end;
+    end;
+  end;
   DrawContour := False;
   Result := 255;
 end;
 
-function TPathRenderer.Render(const APathLoss: TPathloss;
-  const ABitmap: TBGRABitmap; const ARenderType: TRenderType;
-  const APlotTerrain: boolean = True; const AContourThreshold: integer = 0): Boolean;
+function TPathRenderer.Colorize(dfVal, dfHillshade: double): TBGRAPixel;
+var
+  i, upper, mid, lower: integer;
+  dfRatio: double;
+
+  function Fix(d: double): byte;
+  var
+    i: integer;
+  begin
+    i := round(d);
+    if i < 0 then
+      i := 0;
+    if i > 255 then
+      i := 255;
+    Result := byte(i);
+  end;
+
+begin
+  lower := 0;
+  dfVal := dfVal / 3.28084;
+  Result.FromRGB(0, 0, 0);
+
+  i := 0;
+  upper := Length(FColorSet) - 1;
+  while True do
+  begin
+    mid := (lower + upper) div 2;
+    if (upper - lower <= 1) then
+    begin
+      if (dfVal <= FColorSet[lower].dfVal) then
+        i := lower
+      else if (dfVal <= FColorSet[upper].dfVal) then
+        i := upper
+      else
+        i := upper + 1;
+      break;
+    end
+    else if (FColorSet[mid].dfVal >= dfVal) then
+      upper := mid
+    else
+      lower := mid;
+  end;
+
+  if i = 0 then
+  begin
+    Result.Red := FColorSet[0].nR;
+    Result.Green := FColorSet[0].nG;
+    Result.Blue := FColorSet[0].nB;
+  end
+  else
+  begin
+    if i >= Length(FColorSet) then
+      i := Length(FColorSet) - 1;
+
+    dfRatio :=
+      (dfVal - FColorSet[i - 1].dfVal) / (FColorSet[i].dfVal -
+      FColorSet[i - 1].dfVal);
+    Result.Red := Fix(0.45 + FColorSet[i - 1].nR + dfRatio *
+      (FColorSet[i].nR - FColorSet[i - 1].nR));
+    Result.Green := Fix(0.45 + FColorSet[i - 1].nG + dfRatio *
+      (FColorSet[i].nG - FColorSet[i - 1].nG));
+    Result.Blue := Fix(0.45 + FColorSet[i - 1].nB + dfRatio *
+      (FColorSet[i].nB - FColorSet[i - 1].nB));
+  end;
+
+  if (dfHillshade >= 0) and (dfHillshade <= 1) then
+  begin
+    Result.Red := round(dfHillshade * Result.Red);
+    Result.Green := round(dfHillshade * Result.Green);
+    Result.Blue := round(dfHillshade * Result.Blue);
+  end;
+end;
+
+function TPathRenderer.hillshade(const APathLoss: TPathLoss;
+  const lat, lon: double): double;
+
+const
+  Z_FACTOR = 1;
+  KERNELSIZE = 1;
+  ALTITUDE = 45 * PI / 180;
+  AZIMUTH = 135 * PI / 180;
+  ZENITH = PI / 2 - ALTITUDE;
 
 var
-  terrain: byte;
+  dpp, a, b, c, d, f, g, h, i: double;
+  dzdx, dzdy, slope, aspect: double;
+begin
+  // Values in the eight neighboring cells
+  with APathLoss do
+  begin
+    dpp := 1 / APathLoss.PixelPerDegree;
+    GetElevation(self, lat - dpp, lon - dpp, a);
+    GetElevation(self, lat, lon - dpp, b);
+    GetElevation(self, lat + dpp, lon - dpp, c);
+    GetElevation(self, lat - dpp, lon, d);
+    GetElevation(self, lat + dpp, lon, f);
+    GetElevation(self, lat - dpp, lon + dpp, g);
+    GetElevation(self, lat, lon + dpp, h);
+    GetElevation(self, lat + dpp, lon + dpp, i);
+  end;
+  dzdx := ((c + 2 * f + i) - (a + 2 * d + g)) / (8 * KERNELSIZE);
+  dzdy := ((g + 2 * h + i) - (a + 2 * b + c)) / (8 * KERNELSIZE);
+  slope := arctan(Z_FACTOR * sqrt(dzdx * dzdx + dzdy * dzdy));
+  aspect := arctan2(dzdy, -dzdx);
+  Result := ((cos(ZENITH) * cos(slope)) + (sin(ZENITH) * sin(slope) *
+    cos(AZIMUTH - aspect)));
+  if Result < 0 then
+    Result := 0;
+end;
+
+function TPathRenderer.Render(const APathLoss: TPathloss;
+  const ABitmap: TBGRABitmap; const ARenderType: TRenderType;
+  const APlotTerrain: boolean = True; const AContourThreshold: integer = 0): boolean;
+
+var
   red, green, blue: byte;
   mask: byte;
 
@@ -388,7 +540,7 @@ var
   end;
 
 begin
-  result := false;
+  Result := False;
   if not assigned(ABitmap) then
     exit;
 
@@ -404,7 +556,8 @@ begin
     drawcontour := False;
     dpp := 1 / PixelPerDegree;
 
-    if (MaxElevation = -32768) or (MinElevation = 32768) then exit;
+    if (MaxElevation = -32768) or (MinElevation = 32768) then
+      exit;
 
     ABitmap.SetSize(Height, Height);
     ABitmap.FillTransparent;
@@ -432,86 +585,81 @@ begin
         green := 0;
         blue := 0;
 
-        plotterrain := False;
-        match := FindMatch(APathLoss, x0, y0, ARenderType,
-         AContourThreshold, Region, drawcontour);
-
-        if (match < Region.levels) then
+        if ARenderType = rtElevation then
         begin
-          red := Region.color[match][0];
-          green := Region.color[match][1];
-          blue := Region.color[match][2];
-        end;
-
-        if (mask and 2 > 0) then
-        begin
-          (* Text Labels: Red or otherwise *)
-          if (red >= 180) and (green <= 75) and (blue <= 75) then
-            ADD_PIXEL(x0, y0, 255 xor red,
-              255 xor green,
-              255 xor blue)
-          else
-            ADD_PIXEL(x0, y0, 255, 0, 0);
-        end
-        else if (mask and 4 > 0) then
-        begin
-          (* County Boundaries: Black *)
-          ADD_PIXEL(x0, y0, 0, 0, 0);
+          plotterrain := APlotTerrain;
+          drawcontour := True;
         end
         else
         begin
-          if ARenderType = rtLineOfSight then
+          plotterrain := False;
+          match := FindMatch(APathLoss, x0, y0, ARenderType,
+            AContourThreshold, Region, drawcontour);
+
+          if (match < Region.levels) then
           begin
-            case mask and 57 of
-              1: ADD_PIXEL(x0, y0, 0, 255, 0); (* TX1: Green *)
-              8: ADD_PIXEL(x0, y0, 0, 255, 255); (* TX2: Cyan *)
-              9: ADD_PIXEL(x0, y0, 255, 255, 0);  (* TX1 + TX2: Yellow *)
-              16: ADD_PIXEL(x0, y0, 147, 112, 219); (* TX3: Medium Violet *)
-              17: ADD_PIXEL(x0, y0, 255, 192, 203); (* TX1 + TX3: Pink *)
-              24: ADD_PIXEL(x0, y0, 255, 165, 0); (* TX2 + TX3: Orange *)
-              25: ADD_PIXEL(x0, y0, 0, 100, 0); (* TX1 + TX2 + TX3: Dark Green *)
-              32: ADD_PIXEL(x0, y0, 255, 130, 71); (* TX4: Sienna 1 *)
-              33: ADD_PIXEL(x0, y0, 173, 255, 47); (* TX1 + TX4: Green Yellow *)
-              40: ADD_PIXEL(x0, y0, 193, 255, 193); (* TX2 + TX4: Dark Sea Green 1 *)
-              41: ADD_PIXEL(x0, y0, 255, 235, 205);
-              (* TX1 + TX2 + TX4: Blanched Almond *)
-              48: ADD_PIXEL(x0, y0, 0, 206, 209); (* TX3 + TX4: Dark Turquoise *)
-              49: ADD_PIXEL(x0, y0, 0, 250, 154);
-              (* TX1 + TX3 + TX4: Medium Spring Green *)
-              56: ADD_PIXEL(x0, y0, 210, 180, 140); (* TX2 + TX3 + TX4: Tan *)
-              57: ADD_PIXEL(x0, y0, 238, 201, 0); (* TX1 + TX2 + TX3 + TX4: Gold2 *)
-              else
-                plotterrain := APlotTerrain;
-            end;
+            red := Region.color[match][0];
+            green := Region.color[match][1];
+            blue := Region.color[match][2];
+          end;
+
+          if (mask and 2 > 0) then
+          begin
+            (* Text Labels: Red or otherwise *)
+            if (red >= 180) and (green <= 75) and (blue <= 75) then
+              ADD_PIXEL(x0, y0, 255 xor red,
+                255 xor green,
+                255 xor blue)
+            else
+              ADD_PIXEL(x0, y0, 255, 0, 0);
+          end
+          else if (mask and 4 > 0) then
+          begin
+            (* County Boundaries: Black *)
+            ADD_PIXEL(x0, y0, 0, 0, 0);
           end
           else
           begin
-            if (not drawcontour) and ((red <> 0) or (green <> 0) or (blue <> 0)) then
-              ADD_PIXEL(x0, y0, red, green, blue)
-            else
-              plotterrain := APlotTerrain;
-          end;
-
-          if plotterrain then
-          begin
-            if (pelevation = 0) then
-              ADD_PIXEL(x0, y0, 0, 0, 170)
+            if ARenderType = rtLineOfSight then
+            begin
+              case mask and 57 of
+                1: ADD_PIXEL(x0, y0, 0, 255, 0); (* TX1: Green *)
+                8: ADD_PIXEL(x0, y0, 0, 255, 255); (* TX2: Cyan *)
+                9: ADD_PIXEL(x0, y0, 255, 255, 0);  (* TX1 + TX2: Yellow *)
+                16: ADD_PIXEL(x0, y0, 147, 112, 219); (* TX3: Medium Violet *)
+                17: ADD_PIXEL(x0, y0, 255, 192, 203); (* TX1 + TX3: Pink *)
+                24: ADD_PIXEL(x0, y0, 255, 165, 0); (* TX2 + TX3: Orange *)
+                25: ADD_PIXEL(x0, y0, 0, 100, 0); (* TX1 + TX2 + TX3: Dark Green *)
+                32: ADD_PIXEL(x0, y0, 255, 130, 71); (* TX4: Sienna 1 *)
+                33: ADD_PIXEL(x0, y0, 173, 255, 47); (* TX1 + TX4: Green Yellow *)
+                40: ADD_PIXEL(x0, y0, 193, 255, 193); (* TX2 + TX4: Dark Sea Green 1 *)
+                41: ADD_PIXEL(x0, y0, 255, 235, 205);
+                (* TX1 + TX2 + TX4: Blanched Almond *)
+                48: ADD_PIXEL(x0, y0, 0, 206, 209); (* TX3 + TX4: Dark Turquoise *)
+                49: ADD_PIXEL(x0, y0, 0, 250, 154);
+                (* TX1 + TX3 + TX4: Medium Spring Green *)
+                56: ADD_PIXEL(x0, y0, 210, 180, 140); (* TX2 + TX3 + TX4: Tan *)
+                57: ADD_PIXEL(x0, y0, 238, 201, 0); (* TX1 + TX2 + TX3 + TX4: Gold2 *)
+                else
+                  plotterrain := APlotTerrain;
+              end;
+            end
             else
             begin
-              terrain :=
-                byte(round(0.5  + power((pelevation - MinElevation), one_over_gamma) *
-                conversion));
-              ADD_PIXEL(x0, y0,
-                terrain,
-                terrain,
-                terrain);
+              if (not drawcontour) and ((red <> 0) or (green <> 0) or (blue <> 0)) then
+                ADD_PIXEL(x0, y0, red, green, blue)
+              else
+                plotterrain := APlotTerrain;
             end;
           end;
         end;
+        if plotterrain then
+          ABitmap.SetPixel(x0, y0,
+            Colorize(pElevation, hillshade(APathLoss, lat, lon)));
       until lon > MaxWest;
     until lat > MaxNorth;
   end;
-  result := true;
+  Result := True;
 end;
 
 end.

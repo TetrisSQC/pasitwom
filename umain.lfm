@@ -14,9 +14,9 @@ object frmMain: TfrmMain
     Height = 532
     Top = 0
     Width = 512
-    ActivePage = tsReport
+    ActivePage = tsRendering
     Align = alClient
-    TabIndex = 2
+    TabIndex = 0
     TabOrder = 0
     object tsRendering: TTabSheet
       Caption = 'Rendering'
@@ -35,17 +35,18 @@ object frmMain: TfrmMain
     end
     object tsTest: TTabSheet
       Caption = 'Test'
-      ClientHeight = 629
-      ClientWidth = 802
+      ClientHeight = 504
+      ClientWidth = 504
       object mmoMain: TMemo
         Left = 0
-        Height = 629
+        Height = 504
         Top = 0
-        Width = 802
+        Width = 504
         Align = alClient
         Lines.Strings = (
           'mmoMain'
         )
+        ScrollBars = ssVertical
         TabOrder = 0
       end
     end
@@ -53,15 +54,16 @@ object frmMain: TfrmMain
       Caption = 'Report'
       ClientHeight = 504
       ClientWidth = 504
-      object Memo1: TMemo
+      object mmoReport: TMemo
         Left = 0
         Height = 504
         Top = 0
         Width = 504
         Align = alClient
         Lines.Strings = (
-          'Memo1'
+          'mmoReport'
         )
+        ScrollBars = ssVertical
         TabOrder = 0
       end
     end

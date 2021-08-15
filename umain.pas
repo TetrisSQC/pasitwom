@@ -14,7 +14,7 @@ type
 
   TfrmMain = class(TForm)
     imgRender: TImage;
-    Memo1: TMemo;
+    mmoReport: TMemo;
     mmoMain: TMemo;
     pgMain: TPageControl;
     tsReport: TTabSheet;
@@ -107,14 +107,14 @@ begin
 
   Calc := TPathLossCalculator.create;
   Calc.Calculate(Source, Dest);
-  memo1.lines.Assign(calc.Report);
+  mmoReport.lines.Assign(calc.Report);
   Calc.free;
 
   FPath := TPathLoss.Create;
   FPath.Model := TPathLossModel.pmITWOM3;
   FPath.UseDBm := False;
   FPath.MaxRange := 50;
-  FPath.Calculate(Source, 5, false);
+  //FPath.Calculate(Source, 5, false);
 
 
 end;

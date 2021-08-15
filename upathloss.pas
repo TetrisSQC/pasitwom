@@ -2199,9 +2199,9 @@ begin
     FReport.Add(format('Polarisation: %d (%s)',
       [FSettings.pol, PolToStr(FSettings.pol)]));
 
-    FReport.Add(format('Fraction of Situations: %.1f'#37,
+    FReport.Add(format('Fraction of Situations: %.1f%%',
       [FSettings.conf * 100.0]));
-    FReport.Add(format('Fraction of Time: %.1f'#37, [FSettings.rel * 100.0]));
+    FReport.Add(format('Fraction of Time: %.1f%%', [FSettings.rel * 100.0]));
 
     if (FSettings.erp <> 0.0) then
     begin
@@ -2755,7 +2755,7 @@ begin
           fpt6 :=
             format(sLinebreak + 'Antenna at %s must be raised to at least %.2f ' +
             'meters AGL ' + sLinebreak +
-            'to clear %.0f'#37' of the first Fresnel zone.',
+            'to clear %.0f%% of the first Fresnel zone.',
             [ADestination.Caption, METERS_PER_FOOT *
             (h_r_fpt6 - GetElevation(ADestination) - EARTHRADIUS),
             FFresnelZoneClearance * 100.0])
@@ -2763,12 +2763,12 @@ begin
         else
           fpt6 := format(sLinebreak + 'Antenna at %s must be raised to at least %.2f ' +
             'feet AGL' + sLinebreak +
-            'to clear %.0f'#37' of the first Fresnel zone.',
+            'to clear %.0f%% of the first Fresnel zone.',
             [ADestination.Caption, h_r_fpt6 - GetElevation(ADestination) -
             EARTHRADIUS, FFresnelZoneClearance * 100.0]);
       end
       else
-        fpt6 := format(sLinebreak + '%.0f'#37' of the first Fresnel zone is clear.',
+        fpt6 := format(sLinebreak + '%.0f%% of the first Fresnel zone is clear.',
           [FFresnelZoneClearance * 100.0]);
 
       if (h_r_f1 > h_r_orig) then

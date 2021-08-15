@@ -14,8 +14,10 @@ type
 
   TfrmMain = class(TForm)
     imgRender: TImage;
+    Memo1: TMemo;
     mmoMain: TMemo;
     pgMain: TPageControl;
+    tsReport: TTabSheet;
     tsRendering: TTabSheet;
     tsTest: TTabSheet;
     tmrMain: TTimer;
@@ -88,8 +90,8 @@ const
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 var
-  Source: TSite;
-
+  Dest, Source: TSite;
+  Calc: TPathLossCalculator;
 begin
   Test;
   //54.92806814110395;//
@@ -97,11 +99,24 @@ begin
   Source.Lon := -122.3538889;//8.318156693302578;
   Source.Alt := 130;
   Source.Caption := 'KOMO-TV';
+
+  Dest.Lat := Source.lat+0.4;
+  Dest.Lon := Source.lon-0.1;
+  Dest.Alt := 4;
+  Dest.Caption := 'Home';
+
+  Calc := TPathLossCalculator.create;
+  Calc.Calculate(Source, Dest);
+  memo1.lines.Assign(calc.Report);
+  Calc.free;
+
   FPath := TPathLoss.Create;
-  FPath.MaxRange := 50;
   FPath.Model := TPathLossModel.pmITWOM3;
-  FPath.Calculate(Source, 5, false);
   FPath.UseDBm := False;
+  FPath.MaxRange := 50;
+  FPath.Calculate(Source, 5, false);
+
+
 end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);

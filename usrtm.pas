@@ -34,9 +34,13 @@ type
     FSegments: TObjectList;
     FCacheDir: string;
     FLat, FLon: double;
+    FDestLat, FDestLon: double;
+
     FDistance: double;
     FIsLoading: TEvent;
     FCanRead: TEvent;
+    FUseRadius: boolean;
+
   protected
     procedure Execute; override;
   public
@@ -44,6 +48,10 @@ type
     destructor Destroy; override;
 
     function Load(const ALat, ALon: double; const ADistanceMiles: double = 50): boolean;
+      overload;
+    function Load(const ASourceLat, ASourceLon, ADestLat, ADestLon: double): boolean;
+      overload;
+
     function GetElevation(const ALat, ALon: double): integer;
   end;
 
@@ -200,7 +208,7 @@ begin
         except
         end;
       if Stream.Size > 0 then
-       Stream.SaveToFile(CacheDir + Filename);
+        Stream.SaveToFile(CacheDir + Filename);
     finally
       Stream.Free;
       http.Free;
@@ -300,6 +308,34 @@ begin
   inherited;
 end;
 
+function TSRTM.Load(const ASourceLat, ASourceLon, ADestLat, ADestLon: double): boolean;
+begin
+  if FIsLoading.WaitFor(0) = TWaitResult.wrSignaled then
+  begin
+    Result := False;
+    exit;
+  end;
+
+
+  if (not FUseRadius) and (FLat = ASourceLat) and (FLon = ASourceLon) and
+    (FDestLat = ADestLat) and (ADestLon = ADestLon) then
+  begin
+    // do nothing
+  end
+  else
+  begin
+    FLat := ASourceLat;
+    FLon := ASourceLon;
+    FDestLat := ADestLat;
+    FDestLon := ADestLon;
+    FUseRadius := False;
+    FDistance := 0;
+    FIsLoading.SetEvent;
+  end;
+
+  Result := True;
+end;
+
 function TSRTM.Load(const ALat, ALon: double;
   const ADistanceMiles: double = 50): boolean;
 begin
@@ -309,10 +345,16 @@ begin
     exit;
   end;
 
-  if (FLat <> ALat) or (FLon <> ALon) or (FDistance <> ADistanceMiles) then
+  if (FUseRadius) and (FLat = ALat) and (FLon = ALon) and
+    (FDistance = ADistanceMiles) then
+  begin
+    // do nothing
+  end
+  else
   begin
     FLat := ALat;
     FLon := ALon;
+    FUseRadius := True;
     FDistance := ADistanceMiles;
     FIsLoading.SetEvent;
   end;
@@ -333,11 +375,32 @@ begin
       exit;
 
     FSegments.Clear;
-    north := FLat - (FDistance / EARTHRADIUS_MILES) / DEG2RAD;
-    south := FLat + (FDistance / EARTHRADIUS_MILES) / DEG2RAD;
-    east := FLon - (FDistance / EARTHRADIUS_MILES) / DEG2RAD / Cos(FLat * DEG2RAD);
-    west := FLon + (FDistance / EARTHRADIUS_MILES) / DEG2RAD / Cos(FLat * DEG2RAD);
-
+    if FUseRadius then
+    begin
+      north := FLat - (FDistance / EARTHRADIUS_MILES) / DEG2RAD;
+      south := FLat + (FDistance / EARTHRADIUS_MILES) / DEG2RAD;
+      east := FLon - (FDistance / EARTHRADIUS_MILES) / DEG2RAD / Cos(FLat * DEG2RAD);
+      west := FLon + (FDistance / EARTHRADIUS_MILES) / DEG2RAD / Cos(FLat * DEG2RAD);
+    end
+    else
+    begin
+      if FLat < FDestLat then
+        north := FLat
+      else
+        north := FDestLat;
+      if FLat > FDestLat then
+        south := FLat
+      else
+        south := FDestLat;
+      if FLon < FDestLon then
+        east := FLon
+      else
+        east := FDestLon;
+      if FLon > FDestLon then
+        west := FLon
+      else
+        west := FDestLon;
+    end;
     for ilat := trunc(north) to trunc(south) do
       for ilon := trunc(east) to trunc(west) do
         FSegments.Add(TSRTMSegment.Create(ilat, ilon, True, FCacheDir));

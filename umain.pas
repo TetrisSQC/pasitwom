@@ -114,7 +114,7 @@ begin
   FPath.Model := TPathLossModel.pmITWOM3;
   FPath.UseDBm := False;
   FPath.MaxRange := 50;
-  //FPath.Calculate(Source, 5, false);
+  FPath.Calculate(Source, 5, false);
 
 
 end;

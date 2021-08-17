@@ -69,6 +69,7 @@ const
 function GetHGTFile(ALat, ALon: double): string;
 var
   sLat, sLon: char;
+  lonOffset: Byte;
 begin
   if Alat >= 0 then
     sLat := 'N'
@@ -76,11 +77,18 @@ begin
     sLat := 'S';
 
   if Alon >= 0 then
-    sLon := 'E'
+  begin
+    sLon := 'E';
+    lonOffset := 0;
+  end
   else
+  begin
     sLon := 'W';
+    lonOffset := 1;
+  end;
+
   Result := format('%s%.02d%s%.03d.hgt', [sLat, trunc(abs(Alat)),
-    sLon, trunc(abs(Alon))]);
+    sLon, trunc(abs(Alon)+lonOffset)]);
 end;
 
 function GetUSRegion(const ABaseUrl: string; const ALat, ALon: double): string;
@@ -279,7 +287,10 @@ begin
   // Calculate location in the file.
   lat_row := trunc((ALat - Trunc(ALat)) * (FBlockSize - 1));
   lon_row := trunc((ALon - Trunc(ALon)) * (FBlockSize - 1));
-  lat_row := FBlockSize - 1 - lat_row;
+
+  if lat_row < 0 then
+   lat_row := abs(lat_row) else
+   lat_row := FBlockSize - 1 - lat_row;
 
   FStream.Position := (int64(lat_row) * FBlockSize + lon_row) * 2;
   FStream.Read(Data[0], 2);

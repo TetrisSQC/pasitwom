@@ -553,6 +553,7 @@ begin
 
   with APathLoss do
   begin
+    if (MaxNorth=MinNorth) or (MaxWest=MinWest) then exit;
     drawcontour := False;
     dpp := 1 / PixelPerDegree;
 

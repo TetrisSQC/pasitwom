@@ -52,7 +52,7 @@ type
     Ferp: double;
     Fradio_climate: integer;
     Fpol: integer;
-    Fantenna_pattern: TAntennaPattern;
+    FantennaPattern: TAntennaPattern;
     FHasAntennaPattern: boolean;
 
     FEnvironment: TEnvironment; //HATA
@@ -73,7 +73,7 @@ type
     property Environment: TEnvironment read FEnvironment write FEnvironment;
 
     property HasAntennaPattern: boolean read FHasAntennaPattern;
-    property AntennaPattern: TAntennaPattern read Fantenna_pattern;
+    property AntennaPattern: TAntennaPattern read FantennaPattern;
   end;
 
   TPathlossModel = (pmLongleyRice, pmHATA, pmECC33, pmSUI,
@@ -210,11 +210,20 @@ type
     FLat: double;
     FLon: double;
     FLoss: double;
+    FdBm: double;
+    FDistance: double;
+    FIsObstruction: boolean;
+    FFieldStrength: double;
   public
-    constructor Create(const ALat, ALon, ALoss: double);
+    constructor Create(const ALat, ALon, ADistance, ALoss: double;
+      const ASettings: TSettings);
     property Lat: double read FLat;
     property Lon: double read FLon;
     property Loss: double read FLoss;
+    property Distance: double read FDistance;
+    property DBm: double read FdBM;
+    property FieldStrength: double read FFieldStrength;
+    property IsObstruction: boolean read FIsObstruction write FIsObstruction;
   end;
 
   TCalculator = class(TObjectList)
@@ -257,6 +266,7 @@ type
     function ElevationAngle(const ASource, ADestination: TSite): double;
     function ElevationAngle2(const ASource, ADestination: TSite): double;
 
+    procedure SetObstruction(const ASite: TSite);
     procedure ObstructionAnalysis(const ASource, ADestination: TSite);
   public
     constructor Create;
@@ -408,24 +418,6 @@ begin
   else
     Result := 1;
 end;
-
-function GetToken(var Line: string; ch: char = #9): string;
-var
-  i: integer;
-begin
-  i := pos(ch, Line);
-  if i > 0 then
-  begin
-    Result := copy(Line, 1, i - 1);
-    Delete(Line, 1, i);
-  end
-  else
-  begin
-    Result := Line;
-    Line := '';
-  end;
-end;
-
 
 function GetDistance(const ASite1, ASite2: TSite): double;
 var
@@ -668,33 +660,32 @@ begin
   end;
 
   (* Make sure exact destination point is recorded at path.length-1 *)
-  if assigned(AGetElevation) then
+  (*if assigned(AGetElevation) then
     AGetElevation(self, ADestination.lat, ADestination.lon, Elevation);
   Add(TPathItem.Create(Adestination.lat, Adestination.lon, Elevation,
-    total_distance));
+    total_distance));*)
 end;
 
 
 { TSettings }
 constructor TSettings.Create;
 begin
-  Feps_dielect := 15.0;  // Farmland
-  Fsgm_conductivity := 0.005;  // Farmland
-  Feno_ns_surfref := 301.0;
-  Ffrq_mhz := 200.0;  // Deliberately too low
-  Fradio_climate := 5;  // continental
-  Fpol := 1;    // vert
-  Fconf := 0.50;
-  Frel := 0.50;
-  Ferp := 0.0;    // will default to Path Loss
-  fillchar(Fantenna_pattern, sizeof(Fantenna_pattern), 0);
+  eps_dielect := 15.0; // Farmland
+  sgm_conductivity := 0.005; // Farmland
+  eno_ns_surfref := 301.0;
+  frq_mhz := 605.0;
+  radio_climate := 5;   // continental
+  pol := 0;   // horizontal
+  conf := 0.5;
+  rel := 0.9;
+  erp := 650000;
+
   FHasAntennaPattern := False;
 end;
 
 procedure TSettings.LoadAntennaPattern(const AAzimute, AElevation: TStrings);
 var
   w, i, x, y: integer;
-  line: string;
   rotation: double;
   amplitude: double;
   elevation: double;
@@ -713,23 +704,44 @@ var
   az, sum: double;
   a, b, z: integer;
   got_elevation_pattern, got_azimuth_pattern: boolean;
+  helper: double;
+
+  procedure Extract(const ALine: string; out First, Second: double);
+  var
+    i, istart, iend: integer;
+  begin
+    istart := length(ALine);
+    iend := 0;
+    for i := 1 to istart do
+      if (ALine[i] in [' ', #9]) then
+      begin
+        iStart := i;
+        break;
+      end;
+    for i := length(ALine) downto istart do
+      if (ALine[i] in [' ', #9]) then
+      begin
+        iEnd := i;
+        break;
+      end;
+    Val(copy(ALine, 1, iStart - 1), First, i);
+    Val(copy(ALine, iend + 1), Second, i);
+  end;
+
 begin
   got_azimuth_pattern := False;
   got_elevation_pattern := False;
 
   if assigned(AAzimute) and (AAzimute.Count > 0) then
   begin
-    rotation := StrToFloat(AAzimute[0]);
-    for i := 0 to high(azimuth) do
-    begin
-      azimuth[i] := 0;
-      read_count[i] := 0;
-    end;
+    Extract(AAzimute[0], rotation, helper);
+    fillchar({%H-}azimuth, length(azimuth) * sizeof(azimuth[0]), 0);
+    fillchar({%H-}read_count, length(read_count) * sizeof(read_count[0]), 0);
+
     for i := 1 to AAzimute.Count - 1 do
     begin
-      line := AAzimute[i];
-      x := round(StrToFloat(gettoken(line, #9)));
-      amplitude := StrToFloat(gettoken(line, #9));
+      Extract(AAzimute[i], helper, amplitude);
+      x := trunc(helper);
       if (x >= 0) and (x <= 360) then
       begin
         azimuth[x] := azimuth[x] + amplitude;
@@ -813,20 +825,13 @@ begin
   begin
     (* Clear azimuth pattern array *)
 
-    for x := 0 to 10000 do
-    begin
-      el_pattern[x] := 0.0;
-      read_count[x] := 0;
-    end;
-    line := AElevation[0];
-    mechanical_tilt := round(StrToFloat(gettoken(line, #9)));
-    tilt_azimuth := round(StrToFloat(gettoken(line, #9)));
+    Fillchar({%H-}el_pattern, length(el_pattern) * sizeof(el_pattern[0]), 0);
+    Fillchar({%H-}read_count, length(read_count) * sizeof(read_count[0]), 0);
+
+    extract(AElevation[0], mechanical_tilt, tilt_azimuth);
     for i := 0 to AElevation.Count - 1 do
     begin
-      line := AElevation[i];
-      elevation := round(StrToFloat(gettoken(line, #9)));
-      amplitude := round(StrToFloat(gettoken(line, #9)));
-
+      extract(AElevation[i], elevation, amplitude);
       x := round(100.0 * (elevation + 10.0));
 
       if (x >= 0) and (x <= 10000) then
@@ -966,7 +971,7 @@ begin
       else
         az := 1.0;
 
-      FAntenna_pattern[x][y] := az * elevation;
+      FAntennaPattern[x][y] := az * elevation;
     end;
 end;
 
@@ -1387,7 +1392,7 @@ begin
     four_thirds_earth := FOUR_THIRDS * EARTHRADIUS;
 
     (* Copy elevations plus clutter along path into the elev[] array. *)
-    for x := 1 to path.Count - 2 do
+    for x := 1 to path.Count - 1 do
     begin
       elev[x + 2] := TPathItem(Path[x]).elevation * METERS_PER_FOOT;
       if elev[x + 2] > 0 then
@@ -1495,8 +1500,8 @@ begin
 
         (* Distance between elevation samples *)
 
-        elev[1] := METERS_PER_MILE * (p.distance -
-          TPathItem(path[y - 1]).distance);
+        elev[1] := METERS_PER_MILE *
+          (p.distance - TPathItem(path[y - 1]).distance);
 
         dkm := (elev[1] * elev[0]) / 1000;  // km
 
@@ -1703,6 +1708,7 @@ begin
     else
       lat := ARange.min_north + (dpp * y);
 
+    sleep(1);
   until ((ARange.eastwest) and ((LonDiff(lon, ARange.max_west) > 0.0)) or
       ((not ARange.eastwest) and (lat >= ARange.max_north)));
 end;
@@ -1825,11 +1831,24 @@ end;
 
 
 { TCalculatorItem }
-constructor TCalculatorItem.Create(const ALat, ALon, ALoss: double);
+constructor TCalculatorItem.Create(const ALat, ALon, ADistance, ALoss: double;
+  const ASettings: TSettings);
+var
+  rxp: double;
 begin
   FLat := ALat;
   FLon := ALon;
+  FDistance := ADistance;
+  FIsObstruction := False;
   FLoss := ALoss;
+
+  if assigned(ASettings) then
+  begin
+    rxp := ASettings.erp / (power(10.0, (FLoss - 2.14) / 10.0));
+    FdBm := 10.0 * (log10(rxp * 1000.0));
+    FFieldStrength := (139.4 + (20.0 * log10(ASettings.frq_mhz)) - FLoss) +
+      (10.0 * log10(ASettings.erp / 1000.0));
+  end;
 end;
 
 { TCalculator }
@@ -1851,9 +1870,10 @@ procedure TCalculator.GetElevation(Sender: TObject; ALat, ALon: double;
   out Elevation: double);
 begin
   Elevation := FSRTM.GetElevation(ALat, ALon);
-  if Elevation=32768 then
-   Elevation:=FLastElevation else
-   FLastElevation:=Elevation;
+  if Elevation = 32768 then
+    Elevation := FLastElevation
+  else
+    FLastElevation := Elevation;
   Elevation := 3.28084 * Elevation;
 end;
 
@@ -1889,7 +1909,7 @@ begin
   inherited;
   Path := TPath.Create(ASource, ADestination, GetPixelPerDegree, @GetElevation);
   try
-    for y := 0 to Path.Count - 2 do
+    for y := 0 to Path.Count - 1 do
     begin
       p := TPathItem(path[y]);
     (* Test this point only if it hasn't been already
@@ -1942,7 +1962,7 @@ begin
       end;
 
       if not block then
-        Add(TCalculatorItem.Create(p.lat, p.lon, 1));
+        Add(TCalculatorItem.Create(p.lat, p.lon, p.distance, 1, nil));
     end;
   finally
     Path.Free;
@@ -1986,18 +2006,20 @@ var
   distance, source_alt2: double;
   Path: TPath;
   p: TPathItem;
-  function Arccos(x : Float) : Float;
-begin
-  if abs(x)=1.0 then
-    if x<0.0 then
-      arccos:=Pi
+
+  function Arccos(x: Float): Float;
+  begin
+    if abs(x) = 1.0 then
+      if x < 0.0 then
+        arccos := Pi
+      else
+        arccos := 0
     else
-      arccos:=0
-  else
-      begin
-    arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
+    begin
+      arccos := arctan2(sqrt((1.0 - x) * (1.0 + x)), x);
     end;
-end;
+  end;
+
 begin
   (* This function returns the angle of elevation (in degrees)
      of the destination as seen from the source location, UNLESS
@@ -2196,11 +2218,10 @@ begin
     FReport.Add(format('Frequency: %.3f MHz', [FSettings.frq_mhz]));
     FReport.Add(format('Radio Climate: %d (%s)',
       [FSettings.radio_climate, ClimateToStr(FSettings.radio_climate)]));
-    FReport.Add(format('Polarisation: %d (%s)',
-      [FSettings.pol, PolToStr(FSettings.pol)]));
+    FReport.Add(format('Polarisation: %d (%s)', [FSettings.pol,
+      PolToStr(FSettings.pol)]));
 
-    FReport.Add(format('Fraction of Situations: %.1f%%',
-      [FSettings.conf * 100.0]));
+    FReport.Add(format('Fraction of Situations: %.1f%%', [FSettings.conf * 100.0]));
     FReport.Add(format('Fraction of Time: %.1f%%', [FSettings.rel * 100.0]));
 
     if (FSettings.erp <> 0.0) then
@@ -2282,7 +2303,7 @@ begin
 
       azimuth := round(GetAzimuth(ASource, ADestination));
 
-      for y := 2 to path.Count - 2 do
+      for y := 2 to path.Count - 1 do
       begin (* path.length-1 avoids LR error *)
         distance := FEET_PER_MILE * TPathItem(path[y]).distance;
 
@@ -2479,7 +2500,7 @@ begin
           minloss := total_loss;
 
         Add(TCalculatorItem.Create(TPathItem(path[y]).lat, TPathItem(path[y]).lon,
-          total_loss));
+          TPathItem(path[y]).Distance, total_loss, FSettings));
       end;
 
       distance := GetDistance(ASource, ADestination);
@@ -2574,6 +2595,20 @@ begin
   ObstructionAnalysis(ASource, Adestination);
 end;
 
+
+procedure TPathLossCalculator.SetObstruction(const ASite: TSite);
+var
+  i: integer;
+begin
+  for i := 0 to Count - 1 do
+    with TCalculatorItem(items[i]) do
+      if (Lat = ASite.Lat) and (Lon = ASite.Lon) then
+      begin
+        IsObstruction := True;
+        exit;
+      end;
+end;
+
 procedure TPathLossCalculator.ObstructionAnalysis(const ASource, ADestination: TSite);
 var
   x: integer;
@@ -2627,7 +2662,7 @@ begin
      acos().  However, note the inverted comparison: if
      acos(A) > acos(B), then B > A. *)
 
-    for x := path.Count - 2 downto 1 do
+    for x := path.Count - 1 downto 1 do
     begin
       site_x.lat := TPathItem(path[x]).lat;
       site_x.lon := TPathItem(path[x]).lon;
@@ -2648,6 +2683,7 @@ begin
             'obstructions were detected at:' + sLinebreak + sLinebreak,
             [ADestination.Caption, ASource.Caption]));
 
+        SetObstruction(site_x);
         if (site_x.lat >= 0.0) then
         begin
           if (FUseMetric) then
@@ -2735,8 +2771,8 @@ begin
         helper := format(sLinebreak + 'Antenna at %s must be raised to ' +
           'at least %.2f meters AGL' + sLinebreak +
           'to clear all obstructions detected.',
-          [ADestination.Caption, METERS_PER_FOOT * (h_r -
-          GetElevation(ADestination) - EARTHRADIUS)])
+          [ADestination.Caption, METERS_PER_FOOT *
+          (h_r - GetElevation(ADestination) - EARTHRADIUS)])
 
       else
         helper := format(sLinebreak + 'Antenna at %s must be raised to ' +

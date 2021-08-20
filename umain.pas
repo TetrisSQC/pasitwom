@@ -128,23 +128,6 @@ begin
   end;
 end;
 
-(*
-
-15.000  ; Earth Dielectric Constant (Relative permittivity)
-0.005  ; Earth Conductivity (Siemens per meter)
-301.000  ; Atmospheric Bending Constant (N-Units)
-605.000  ; Frequency in MHz (20 MHz to 20 GHz)
-5  ; Radio Climate
-0  ; Polarization (0 = Horizontal, 1 = Vertical)
-0.50  ; Fraction of situations
-0.90  ; Fraction of time
-650000  ; ERP in watts
-
-Please consult SPLAT! documentation for the meaning and use of this data.
-
-*)
-
-
 { TfrmMain }
 
 procedure TfrmMain.FormCreate(Sender: TObject);
@@ -152,26 +135,12 @@ var
   Dest, Source: TSite;
   Calc: TPathLossCalculator;
   i: integer;
-  az, el: TStringList;
 begin
   Test;
-(*
-  Source.Lat := 47.63194444;//54.92806814110395;
-  Source.Lon := -122.3538889;//8.318156693302578;
-  Source.Alt := 130;
-  Source.Caption := 'KOMO-TV';
-
-   Source.Lat := 40.330666;
-  Source.Lon := -74.120975;
-  Source.Alt := 350;
-  Source.Caption := 'N2SMT/R';
-
-    //Source.Lat := 54.67463356753681;Source.Lon := 13.413096637865673;
-  *)
 
   Source.Lon := -74.246389;//ReadBearing('40 48 8.0');
   Source.Lat := 40.802222;//ReadBearing('74 14 47.0');
-  Source.Alt := 323.162750;//98.5*3.28084;
+  Source.Alt := 323.162750;
   Source.Caption := 'WNJU-DT';
 
   Dest.Lat := Source.lat + 0.1;
@@ -196,13 +165,6 @@ begin
   FPath := TPathLoss.Create;
   FPath.Model := TPathLossModel.pmLongleyRice;//pmITWOM3;//
 
-  az := TStringList.Create;
-  el := TStringList.Create;
-  az.LoadFromFile('sample_data\wnju-dt.az');
-  el.LoadFromFile('sample_data\wnju-dt.el');
-  FPath.Settings.LoadAntennaPattern(az, el);
-  az.Free;
-  el.Free;
   FPath.HDMode := False;
   FPath.UseDBm := true;
   FPath.MaxRange := 50;

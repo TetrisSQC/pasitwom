@@ -67,6 +67,49 @@ object frmMain: TfrmMain
         TabOrder = 0
       end
     end
+    object tsDiagramm: TTabSheet
+      Caption = 'Diagram'
+      ClientHeight = 504
+      ClientWidth = 504
+      object crtMain: TChart
+        Left = 0
+        Height = 504
+        Top = 0
+        Width = 504
+        AxisList = <        
+          item
+            Marks.LabelBrush.Style = bsClear
+            Minors = <>
+            Title.LabelFont.Orientation = 900
+            Title.LabelBrush.Style = bsClear
+          end        
+          item
+            Alignment = calBottom
+            Marks.LabelBrush.Style = bsClear
+            Minors = <>
+            Title.LabelBrush.Style = bsClear
+          end>
+        Foot.Brush.Color = clBtnFace
+        Foot.Font.Color = clBlue
+        Title.Brush.Color = clBtnFace
+        Title.Font.Color = clBlue
+        Title.Text.Strings = (
+          'TAChart'
+        )
+        Align = alClient
+        object lsSignal: TLineSeries
+        end
+        object lsObstructions: TLineSeries
+          LineType = ltNone
+          Pointer.Visible = True
+          ShowPoints = True
+        end
+        object lsElevation: TAreaSeries
+          AreaBrush.Color = clMoneyGreen
+          AreaLinesPen.Style = psClear
+        end
+      end
+    end
   end
   object tmrMain: TTimer
     Interval = 10000

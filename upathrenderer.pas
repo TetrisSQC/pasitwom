@@ -19,46 +19,56 @@ type
     nR, nG, nB: byte;
   end;
 
-  TRenderType = (rtSignal, rtPathLoss, rtRXPower, rtLineOfSight, rtElevation);
+  TRenderMode = (rmPathloss, rmRxdPower, rmSignalStrength);
 
   TPathRenderer = class
   private
     FSignalRegion: TRegion;
     FLossRegion: TRegion;
     FDBmRegion: TRegion;
+
     FColorSet: array of TColorRange;
 
+    FUseHillShade: Boolean;
+    FContourThreshold: Integer;
+    FPlotTerrain: Boolean;
+    FGrayscale: Boolean;
+
+    function GetMode(const APathLoss: TPathLoss): TRenderMode;
     procedure LoadSignalColors;
     function FindMatch(const APathLoss: TPathloss; const x, y: integer;
-      const ARenderType: TRenderType; const AContourThreshold: integer;
-      const ARegion: TRegion; out DrawContour: boolean): byte;
+      const ARegion: TRegion;
+      out DrawContour: boolean): byte;
 
     function hillshade(const APathLoss: TPathLoss; const lat, lon: double): double;
     function Colorize(dfVal, dfHillshade: double): TBGRAPixel;
     procedure LoadDefaultColorSet;
   public
     constructor Create;
-    function Render(const APathLoss: TPathloss; const ABitmap: TBGRABitmap;
-      const ARenderType: TRenderType; const APlotTerrain: boolean = True;
-      const AContourThreshold: integer = 0): boolean;
+    function Render(const APathLoss: TPathloss; const ABitmap: TBGRABitmap): boolean;
+
+    property ContourThreshold: Integer read FContourThreshold write FContourThreshold;
+    property PlotTerrain: Boolean read FPlotTerrain write FPlotTerrain;
+    property UseHillShade: Boolean read FUseHillShade write FUseHillShade;
+    property Grayscale: Boolean read FGrayscale write FGrayscale;
   end;
 
 implementation
 
 uses Math;
 
-const
-  GAMMA = 2.5;
-
 constructor TPathRenderer.Create;
 begin
   LoadSignalColors;
   LoadDefaultColorSet;
+  FUseHillShade := true;
+  FPlotTerrain := true;
+  FContourThreshold := 0;
+  FGrayScale := false;
 end;
 
 procedure TPathRenderer.LoadSignalColors;
 begin
-
   FSignalRegion.level[0] := 128;
   FSignalRegion.color[0][0] := 255;
   FSignalRegion.color[0][1] := 0;
@@ -317,10 +327,18 @@ begin
 end;
 
 
+function TPathRenderer.GetMode(const APathLoss: TPathLoss): TRenderMode;
+begin
+ if (APathloss.Settings.erp = 0.0) then
+  result := TRenderMode.rmPathloss
+ else if (APathLoss.UseDBm) then
+  result := TRenderMode.rmRxdPower
+ else
+  result := TRenderMode.rmSignalStrength;
+end;
 
 function TPathRenderer.FindMatch(const APathLoss: TPathloss;
-  const x, y: integer; const ARenderType: TRenderType;
-  const AContourThreshold: integer; const ARegion: TRegion;
+  const x, y: integer; const ARegion: TRegion;
   out DrawContour: boolean): byte;
 var
   signal, loss, dBm: integer;
@@ -329,17 +347,11 @@ var
 begin
   Data := APathLoss.GetSignalValue(y * APathLoss.Height + x);
 
-  case ARenderType of
-    rtElevation:
-    begin
-      Result := 0;
-      DrawContour := False;
-      exit;
-    end;
-    rtSignal:
+  case self.GetMode(APathLoss) of
+   rmSignalStrength:  //Signal Strength
     begin
       signal := Data - 100;
-      DrawContour := (AContourThreshold <> 0) and (signal < AContourThreshold);
+      DrawContour := (FContourThreshold <> 0) and (signal < FContourThreshold);
       if (signal >= ARegion.level[0]) then
       begin
         Result := 0;
@@ -357,11 +369,11 @@ begin
         end;
       end;
     end;
-    rtPathLoss:
+    rmPathloss:
     begin
       loss := Data;
-      DrawContour := (Loss = 0) or ((AContourThreshold <> 0) and
-        (loss > abs(AContourThreshold)));
+      DrawContour := (Loss = 0) or ((FContourThreshold <> 0) and
+        (loss > abs(FContourThreshold)));
       if (loss <= ARegion.level[0]) then
       begin
         Result := 0;
@@ -378,10 +390,10 @@ begin
             end;
       end;
     end;
-    rtRXPower:
+    else
     begin
       dBm := Data - 200;
-      DrawContour := (AContourThreshold <> 0) and (dBm < AContourThreshold);
+      DrawContour := (FContourThreshold <> 0) and (dBm < FContourThreshold);
       if (dBm >= ARegion.level[0]) then
       begin
         Result := 0;
@@ -474,6 +486,13 @@ begin
     Result.Green := round(dfHillshade * Result.Green);
     Result.Blue := round(dfHillshade * Result.Blue);
   end;
+
+  if FGrayscale then
+  begin
+   Result.Red := trunc(Result.Red * 0.299 + Result.Green * 0.587 + Result.Blue * 0.114);
+   Result.Green := Result.Red;
+   Result.Blue := Result.Red;
+  end;
 end;
 
 function TPathRenderer.hillshade(const APathLoss: TPathLoss;
@@ -514,8 +533,7 @@ begin
 end;
 
 function TPathRenderer.Render(const APathLoss: TPathloss;
-  const ABitmap: TBGRABitmap; const ARenderType: TRenderType;
-  const APlotTerrain: boolean = True; const AContourThreshold: integer = 0): boolean;
+  const ABitmap: TBGRABitmap): boolean;
 
 var
   red, green, blue: byte;
@@ -523,13 +541,13 @@ var
 
   offset: integer;
   x, y, x0, y0, match: integer;
-  conversion, one_over_gamma: double;
   dpp: double;
   lat, lon: double;
   pelevation: double;
   drawcontour: boolean;
-  plotterrain: boolean;
+  bPlotterrain: boolean;
   Region: TRegion;
+  dHillshade: double;
 
   procedure ADD_PIXEL(const x, y: integer; const r, g, b: byte);
   var
@@ -544,29 +562,23 @@ begin
   if not assigned(ABitmap) then
     exit;
 
-  case ARenderType of
-    rtSignal: Region := FSignalRegion;
-    rtPathLoss: Region := FLossRegion;
-    rtRXPower: Region := FDBmRegion;
-    rtLineOfSight: Region := FSignalRegion;
+  Region := FSignalRegion;
+  case GetMode(APathLoss) of
+    rmPathLoss: Region := FLossRegion;
+    rmRxdPower: Region := FDBmRegion;
   end;
 
   with APathLoss do
   begin
-    if (MaxNorth=MinNorth) or (MaxWest=MinWest) then exit;
+    if (MaxNorth = MinNorth) or (MaxWest = MinWest) or
+     (MaxElevation = -32768) or (MinElevation = 32768) then exit;
+
     drawcontour := False;
     dpp := 1 / PixelPerDegree;
-
-    if (MaxElevation = -32768) or (MinElevation = 32768) then
-      exit;
 
     ABitmap.SetSize(Height, Height);
     ABitmap.FillTransparent;
 
-    one_over_gamma := 1.0 / GAMMA;
-    conversion := Power((MaxElevation - MinElevation), one_over_gamma);
-    if conversion > 0 then
-      conversion := 255.0 / conversion;
     y := 0;
     repeat
       lat := MinNorth + (dpp * y);
@@ -586,16 +598,8 @@ begin
         green := 0;
         blue := 0;
 
-        if ARenderType = rtElevation then
-        begin
-          plotterrain := APlotTerrain;
-          drawcontour := True;
-        end
-        else
-        begin
-          plotterrain := False;
-          match := FindMatch(APathLoss, x0, y0, ARenderType,
-            AContourThreshold, Region, drawcontour);
+          bPlotterrain := False;
+          match := FindMatch(APathLoss, x0, y0, Region, drawcontour);
 
           if (match < Region.levels) then
           begin
@@ -621,12 +625,12 @@ begin
           end
           else
           begin
-            if ARenderType = rtLineOfSight then
+            if APathLoss.LineOfSightOnly then
             begin
               case mask and 57 of
-                1: ADD_PIXEL(x0, y0, 0, 255, 0); (* TX1: Green *)
-                8: ADD_PIXEL(x0, y0, 0, 255, 255); (* TX2: Cyan *)
-                9: ADD_PIXEL(x0, y0, 255, 255, 0);  (* TX1 + TX2: Yellow *)
+                01: ADD_PIXEL(x0, y0, 0, 255, 0); (* TX1: Green *)
+                08: ADD_PIXEL(x0, y0, 0, 255, 255); (* TX2: Cyan *)
+                09: ADD_PIXEL(x0, y0, 255, 255, 0);  (* TX1 + TX2: Yellow *)
                 16: ADD_PIXEL(x0, y0, 147, 112, 219); (* TX3: Medium Violet *)
                 17: ADD_PIXEL(x0, y0, 255, 192, 203); (* TX1 + TX3: Pink *)
                 24: ADD_PIXEL(x0, y0, 255, 165, 0); (* TX2 + TX3: Orange *)
@@ -634,15 +638,13 @@ begin
                 32: ADD_PIXEL(x0, y0, 255, 130, 71); (* TX4: Sienna 1 *)
                 33: ADD_PIXEL(x0, y0, 173, 255, 47); (* TX1 + TX4: Green Yellow *)
                 40: ADD_PIXEL(x0, y0, 193, 255, 193); (* TX2 + TX4: Dark Sea Green 1 *)
-                41: ADD_PIXEL(x0, y0, 255, 235, 205);
-                (* TX1 + TX2 + TX4: Blanched Almond *)
+                41: ADD_PIXEL(x0, y0, 255, 235, 205); (* TX1 + TX2 + TX4: Blanched Almond *)
                 48: ADD_PIXEL(x0, y0, 0, 206, 209); (* TX3 + TX4: Dark Turquoise *)
-                49: ADD_PIXEL(x0, y0, 0, 250, 154);
-                (* TX1 + TX3 + TX4: Medium Spring Green *)
+                49: ADD_PIXEL(x0, y0, 0, 250, 154); (* TX1 + TX3 + TX4: Medium Spring Green *)
                 56: ADD_PIXEL(x0, y0, 210, 180, 140); (* TX2 + TX3 + TX4: Tan *)
                 57: ADD_PIXEL(x0, y0, 238, 201, 0); (* TX1 + TX2 + TX3 + TX4: Gold2 *)
                 else
-                  plotterrain := APlotTerrain;
+                  bPlotterrain := FPlotTerrain;
               end;
             end
             else
@@ -650,13 +652,17 @@ begin
               if (not drawcontour) and ((red <> 0) or (green <> 0) or (blue <> 0)) then
                 ADD_PIXEL(x0, y0, red, green, blue)
               else
-                plotterrain := APlotTerrain;
+                bPlotterrain := FPlotTerrain;
             end;
           end;
-        end;
-        if plotterrain then
+        if bPlotterrain then
+        begin
+          if FUseHillshade then
+             dHillshade := hillshade(APathLoss, lat, lon) else
+             dHillshade := 1;
           ABitmap.SetPixel(x0, y0,
-            Colorize(pElevation, hillshade(APathLoss, lat, lon)));
+            Colorize(pElevation, dHillshade));
+        end;
       until lon > MaxWest;
     until lat > MaxNorth;
   end;

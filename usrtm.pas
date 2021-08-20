@@ -25,7 +25,7 @@ type
       const ACacheDir: string = '');
     destructor Destroy; override;
 
-    function GetElevation(const ALat, ALon: double): integer;
+    function GetElevation(const ALat, ALon: double): Integer;
     function HasElevation(const ALat, ALon: double): boolean;
   end;
 
@@ -269,7 +269,7 @@ begin
   Result := (Trunc(ALat) = FLat) and (Trunc(ALon) = FLon);
 end;
 
-function TSRTMSegment.GetElevation(const ALat, ALon: double): integer;
+function TSRTMSegment.GetElevation(const ALat, ALon: double): Integer;
 var
   lat_row, lon_row: integer;
   Data: array[0..1] of byte;

@@ -25,7 +25,7 @@ type
       const ACacheDir: string = '');
     destructor Destroy; override;
 
-    function GetElevation(const ALat, ALon: double): Integer;
+    function GetElevation(const ALat, ALon: double): integer;
     function HasElevation(const ALat, ALon: double): boolean;
   end;
 
@@ -69,7 +69,7 @@ const
 function GetHGTFile(ALat, ALon: double): string;
 var
   sLat, sLon: char;
-  lonOffset: Byte;
+  lonOffset: byte;
 begin
   if Alat >= 0 then
     sLat := 'N'
@@ -88,7 +88,7 @@ begin
   end;
 
   Result := format('%s%.02d%s%.03d.hgt', [sLat, trunc(abs(Alat)),
-    sLon, trunc(abs(Alon)+lonOffset)]);
+    sLon, trunc(abs(Alon) + lonOffset)]);
 end;
 
 function GetUSRegion(const ABaseUrl: string; const ALat, ALon: double): string;
@@ -269,7 +269,7 @@ begin
   Result := (Trunc(ALat) = FLat) and (Trunc(ALon) = FLon);
 end;
 
-function TSRTMSegment.GetElevation(const ALat, ALon: double): Integer;
+function TSRTMSegment.GetElevation(const ALat, ALon: double): integer;
 var
   lat_row, lon_row: integer;
   Data: array[0..1] of byte;
@@ -285,17 +285,27 @@ begin
   Data[1] := 0;
 
   // Calculate location in the file.
-  lat_row := trunc((ALat - Trunc(ALat)) * (FBlockSize - 1));
-  lon_row := trunc((ALon - Trunc(ALon)) * (FBlockSize - 1));
+  lat_row := round((ALat - Trunc(ALat)) * (FBlockSize - 1));
+  lon_row := round((ALon - Trunc(ALon)) * (FBlockSize - 1));
 
   if lat_row < 0 then
-   lat_row := abs(lat_row) else
-   lat_row := FBlockSize - 1 - lat_row;
+    lat_row := abs(lat_row)
+  else
+    lat_row := FBlockSize - 1 - lat_row;
 
   FStream.Position := (int64(lat_row) * FBlockSize + lon_row) * 2;
   FStream.Read(Data[0], 2);
+
   Result := Data[0] shl 8 or Data[1];
+
+  if (Data[0] and 128 > 0) then
+    Result := Result - $10000;
+  if (Result < -32768) then
+    Result := Result - 32768;
+  if (Result > 32767) then
+    Result := 32767;
 end;
+
 
 { TSRTM }
 constructor TSRTM.Create(const ACacheDir: string = '');

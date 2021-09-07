@@ -2174,7 +2174,7 @@ begin
     [ADestination.Caption, Azimuth]));
 
 
-  FReport.Add(format('Downtilt angle to %s: %+.4f degrees',
+  FReport.Add(format('Downtilt angle to %s: %.4f degrees',
     [ADestination.Caption, angle1]));
 
 
@@ -2259,7 +2259,7 @@ begin
         helper := helper + format('%.3f kilowatts', [FSettings.erp / 1.0e3]);
 
       dBm := 10.0 * (log10(FSettings.erp * 1000.0));
-      FReport.Add(format('%s (%+.2f dBm)', [helper, dBm]));
+      FReport.Add(format('%s (%.2f dBm)', [helper, dBm]));
       FReport.Add(format('Transmitter ERP minus Receiver gain: %.2f dBm',
         [dBm - FRXGain]));
 
@@ -2283,7 +2283,7 @@ begin
         helper := helper + format('%.3f kilowatts', [eirp / 1.0e3]);
 
       dBm := 10.0 * (log10(eirp * 1000.0));
-      FReport.Add(format('%s (%+.2f dBm)', [helper, dBm]));
+      FReport.Add(format('%s (%.2f dBm)', [helper, dBm]));
 
       // Rx gain
       FReport.Add(format('Transmitter EIRP minus Receiver gain: %.2f dBm',
@@ -2567,9 +2567,9 @@ begin
 
         FReport.Add(format('Field strength at %s: %.2f dBuV/meter',
           [ADestination.Caption, field_strength]));
-        FReport.Add(format('Signal power level at %s: %+.2f dBm',
+        FReport.Add(format('Signal power level at %s: %.2f dBm',
           [ADestination.Caption, dBm]));
-        FReport.Add(format('Signal power density at %s: %+.2f dBW per square meter',
+        FReport.Add(format('Signal power density at %s: %.2f dBW per square meter',
           [ADestination.Caption, 10.0 * log10(power_density)]));
         voltage :=
           1.0e6 * sqrt(50.0 * (eirp /
